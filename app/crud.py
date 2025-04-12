@@ -104,6 +104,9 @@ def create_camera(db: Session, camera_data):
 def get_camera(db: Session, camera_id: int):
     return db.query(Camera).filter(Camera.id == camera_id).first()
 
+def get_cameras_by_mall(db: Session, mall_id: int):
+    return db.query(Camera).filter(Camera.mall_id == mall_id).all()
+
 def update_camera(db: Session, camera_id: int, camera_data):
     db_camera = db.query(Camera).filter(Camera.id == camera_id).first()
     for key, value in camera_data.items():

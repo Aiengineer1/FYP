@@ -6,7 +6,7 @@ from ..database import get_db
 
 router = APIRouter()
 
-@router.post("/", response_model=CustomerResponse)
+@router.post("/add_customer", response_model=CustomerResponse)
 def add_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
     return create_customer(db, customer)
 

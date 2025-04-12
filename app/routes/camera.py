@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from typing import List
 from ..schemas.camera import CameraCreate, CameraResponse
-from ..crud import create_camera, get_camera, update_camera, delete_camera
+from ..crud import create_camera, get_camera, update_camera, delete_camera, get_cameras_by_mall
 from ..database import get_db
 
 router = APIRouter()
 
-@router.post("/", response_model=CameraResponse)
+@router.post("/add_camera", response_model=CameraResponse)
 def add_camera(camera: CameraCreate, db: Session = Depends(get_db)):
     return create_camera(db, camera)
 
@@ -16,6 +17,11 @@ def read_camera(camera_id: int, db: Session = Depends(get_db)):
     if db_camera is None:
         raise HTTPException(status_code=404, detail="Camera not found")
     return db_camera
+
+@router.get("/mall/{mall_id}", response_model=List[CameraResponse])
+def read_cameras_by_mall(mall_id: int, db: Session = Depends(get_db)):
+    cameras = get_cameras_by_mall(db, mall_id)
+    return cameras
 
 @router.put("/{camera_id}", response_model=CameraResponse)
 def update_camera_route(camera_id: int, camera: CameraCreate, db: Session = Depends(get_db)):
