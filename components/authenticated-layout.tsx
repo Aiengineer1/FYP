@@ -24,6 +24,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
   const pathname = usePathname()
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [isAdminOpen, setIsAdminOpen] = useState(false)
+  const [mallName, setMallName] = useState<string>("")
 
   // Auto-expand admin panel when on admin pages
   useEffect(() => {
@@ -32,11 +33,37 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
     }
   }, [pathname])
 
-  // Mock mall data - in a real app, this would come from an API or context
-  const mall = {
-    name: "Central City Mall",
-    status: "Active",
-  }
+  // Fetch mall data when component mounts
+  useEffect(() => {
+    const fetchMallData = async () => {
+      try {
+        const userData = localStorage.getItem("user")
+        if (!userData) return
+
+        const user = JSON.parse(userData)
+        const token = localStorage.getItem("token")
+        if (!token) return
+
+        const response = await fetch(`http://localhost:8000/mall/${user.mall_id}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch mall data")
+        }
+
+        const data = await response.json()
+        setMallName(data.name)
+      } catch (error) {
+        console.error("Error fetching mall data:", error)
+        setMallName("Loading...")
+      }
+    }
+
+    fetchMallData()
+  }, [])
 
   return (
     <div className="flex min-h-screen">
@@ -62,7 +89,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
           <div className="border-b px-6 py-3 flex items-center justify-between">
             <Link href="/dashboard" className="flex items-center gap-2">
               <ShoppingBag className="h-6 w-6" />
-              <span className="font-bold text-xl">RetailIQ</span>
+              <span className="font-bold text-xl">InsightCart</span>
             </Link>
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
               <X className="h-5 w-5" />
@@ -75,10 +102,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
                 <span className="text-sm font-medium text-muted-foreground">Mall</span>
               </div>
               <div className="mt-1">
-                <p className="font-medium">{mall.name}</p>
-                <div className="flex items-center mt-1">
-                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-800 rounded-full">{mall.status}</span>
-                </div>
+                <p className="font-medium">{mallName || "Loading..."}</p>
               </div>
             </div>
 

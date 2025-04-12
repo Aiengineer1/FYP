@@ -76,7 +76,7 @@ export default function AuthCheck() {
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Mall Registration</CardTitle>
-            <CardDescription>Do you already have a mall registered with RetailIQ?</CardDescription>
+            <CardDescription>Do you already have a mall registered with InsightCart?</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">

@@ -2,8 +2,8 @@
 
 import type React from "react"
 
-import { useState } from "react"
-import { Camera, Plus, Edit, Trash2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { Camera, Plus, Edit, Trash2, Loader2 } from "lucide-react"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
   DialogContent,
@@ -24,16 +25,32 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-// Mock data - in a real app, this would come from an API
-const existingCameras = [
-  { id: 1, name: "Entrance North", location: "North Entrance", type: "Entrance", status: "Active" },
-  { id: 2, name: "Food Court", location: "Level 2", type: "Tracking", status: "Active" },
-  { id: 3, name: "Main Hallway", location: "Level 1", type: "Tracking", status: "Active" },
-  { id: 4, name: "Parking A", location: "Basement", type: "Entrance", status: "Active" },
-  { id: 5, name: "Electronics Section", location: "Level 3", type: "Shelf", status: "Active" },
-  { id: 8, name: "Entrance South", location: "South Entrance", type: "Entrance", status: "Inactive" },
-  { id: 9, name: "Storage Area", location: "Basement", type: "Shelf", status: "Inactive" },
-]
+// Camera interface based on API response
+interface CameraData {
+  id: number
+  name: string
+  ip_address: string
+  username: string
+  password: string
+  location: string
+  homography_map: any
+  fov_zones: any
+  mall_id: number
+  created_at?: string
+  updated_at?: string
+}
+
+// Form data interface
+interface CameraFormData {
+  name: string
+  ip_address: string
+  username: string
+  password: string
+  location: string
+  homography_map: string
+  fov_zones: string
+  mall_id: number
+}
 
 const locationOptions = [
   "North Entrance",
@@ -49,28 +66,86 @@ const locationOptions = [
 ]
 
 export default function CameraConfigPage() {
-  const [cameras, setCameras] = useState(existingCameras)
+  const { toast } = useToast()
+  const [cameras, setCameras] = useState<CameraData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [selectedCamera, setSelectedCamera] = useState<any>(null)
-  const [formData, setFormData] = useState({
+  const [selectedCamera, setSelectedCamera] = useState<CameraData | null>(null)
+  const [formData, setFormData] = useState<CameraFormData>({
     name: "",
-    rtspUrl: "",
+    ip_address: "",
     username: "",
     password: "",
     location: "",
-    fovZones: "",
-    type: "",
-    status: "Active",
+    homography_map: "{}",
+    fov_zones: "{}",
+    mall_id: 0,
   })
   const [errors, setErrors] = useState<{
     name?: string
-    rtspUrl?: string
+    ip_address?: string
+    username?: string
+    password?: string
     location?: string
-    fovZones?: string
-    type?: string
+    homography_map?: string
+    fov_zones?: string
   }>({})
+
+  // Fetch cameras when component mounts
+  useEffect(() => {
+    fetchCameras()
+  }, [])
+
+  // Fetch cameras from API
+  const fetchCameras = async () => {
+    setIsLoading(true)
+    try {
+      const userData = localStorage.getItem("user")
+      if (!userData) {
+        toast({
+          title: "Error",
+          description: "User data not found. Please log in again.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const user = JSON.parse(userData)
+      const token = localStorage.getItem("token")
+      if (!token) {
+        toast({
+          title: "Error",
+          description: "Authentication token not found. Please log in again.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const response = await fetch(`http://localhost:8000/camera/mall/${user.mall_id}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch cameras")
+      }
+
+      const data = await response.json()
+      setCameras(data)
+    } catch (error) {
+      console.error("Error fetching cameras:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch cameras. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -94,13 +169,13 @@ export default function CameraConfigPage() {
   const resetForm = () => {
     setFormData({
       name: "",
-      rtspUrl: "",
+      ip_address: "",
       username: "",
       password: "",
       location: "",
-      fovZones: "",
-      type: "",
-      status: "Active",
+      homography_map: "{}",
+      fov_zones: "{}",
+      mall_id: 0,
     })
     setErrors({})
   }
@@ -108,10 +183,12 @@ export default function CameraConfigPage() {
   const validateForm = () => {
     const newErrors: {
       name?: string
-      rtspUrl?: string
+      ip_address?: string
+      username?: string
+      password?: string
       location?: string
-      fovZones?: string
-      type?: string
+      homography_map?: string
+      fov_zones?: string
     } = {}
     let isValid = true
 
@@ -120,121 +197,237 @@ export default function CameraConfigPage() {
       isValid = false
     }
 
-    if (!formData.rtspUrl.trim()) {
-      newErrors.rtspUrl = "RTSP URL is required"
+    if (!formData.ip_address.trim()) {
+      newErrors.ip_address = "IP address is required"
       isValid = false
-    } else if (!formData.rtspUrl.startsWith("rtsp://")) {
-      newErrors.rtspUrl = "Must be a valid RTSP URL (starts with rtsp://)"
+    } else if (!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(formData.ip_address)) {
+      newErrors.ip_address = "Must be a valid IP address"
       isValid = false
     }
 
-    if (!formData.location) {
+    if (!formData.username.trim()) {
+      newErrors.username = "Username is required"
+      isValid = false
+    }
+
+    if (!formData.password.trim()) {
+      newErrors.password = "Password is required"
+      isValid = false
+    }
+
+    if (!formData.location.trim()) {
       newErrors.location = "Location is required"
       isValid = false
     }
 
-    if (!formData.type) {
-      newErrors.type = "Camera type is required"
+    // Validate JSON fields
+    try {
+      JSON.parse(formData.homography_map)
+    } catch (e) {
+      newErrors.homography_map = "Homography map must be valid JSON"
       isValid = false
     }
 
-    if (!formData.fovZones.trim()) {
-      newErrors.fovZones = "FOV zones are required"
+    try {
+      JSON.parse(formData.fov_zones)
+    } catch (e) {
+      newErrors.fov_zones = "FOV zones must be valid JSON"
       isValid = false
-    } else {
-      try {
-        JSON.parse(formData.fovZones)
-      } catch (e) {
-        newErrors.fovZones = "FOV zones must be valid JSON"
-        isValid = false
-      }
     }
 
     setErrors(newErrors)
     return isValid
   }
 
-  const handleAddCamera = () => {
+  const handleAddCamera = async () => {
     if (!validateForm()) return
 
-    // In a real app, this would be an API call
-    const newCamera = {
-      id: Math.max(...cameras.map((c) => c.id)) + 1,
-      name: formData.name,
-      location: formData.location,
-      type: formData.type,
-      status: formData.status,
-    }
+    try {
+      const userData = localStorage.getItem("user")
+      if (!userData) {
+        toast({
+          title: "Error",
+          description: "User data not found. Please log in again.",
+          variant: "destructive",
+        })
+        return
+      }
 
-    setCameras([...cameras, newCamera])
-    setIsAddDialogOpen(false)
-    resetForm()
+      const user = JSON.parse(userData)
+      const token = localStorage.getItem("token")
+      if (!token) {
+        toast({
+          title: "Error",
+          description: "Authentication token not found. Please log in again.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Prepare the camera data
+      const cameraData = {
+        ...formData,
+        mall_id: user.mall_id,
+        homography_map: JSON.parse(formData.homography_map),
+        fov_zones: JSON.parse(formData.fov_zones),
+      }
+
+      const response = await fetch("http://localhost:8000/camera/add_camera", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(cameraData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to add camera")
+      }
+
+      const newCamera = await response.json()
+      setCameras([...cameras, newCamera])
+      setIsAddDialogOpen(false)
+      resetForm()
+      
+      toast({
+        title: "Success",
+        description: "Camera added successfully",
+      })
+    } catch (error) {
+      console.error("Error adding camera:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to add camera. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleEditCamera = () => {
+  const handleEditCamera = async () => {
     if (!selectedCamera || !validateForm()) return
 
-    // In a real app, this would be an API call
-    const updatedCameras = cameras.map((camera) =>
-      camera.id === selectedCamera.id
-        ? {
-            ...camera,
-            name: formData.name,
-            location: formData.location,
-            type: formData.type,
-            status: formData.status,
-          }
-        : camera,
-    )
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        toast({
+          title: "Error",
+          description: "Authentication token not found. Please log in again.",
+          variant: "destructive",
+        })
+        return
+      }
 
-    setCameras(updatedCameras)
-    setIsEditDialogOpen(false)
-    setSelectedCamera(null)
-    resetForm()
+      // Prepare the camera data
+      const cameraData = {
+        ...formData,
+        homography_map: JSON.parse(formData.homography_map),
+        fov_zones: JSON.parse(formData.fov_zones),
+      }
+
+      const response = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify(cameraData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to update camera")
+      }
+
+      const updatedCamera = await response.json()
+      
+      // Update the cameras list
+      const updatedCameras = cameras.map((camera) =>
+        camera.id === selectedCamera.id ? updatedCamera : camera
+      )
+      
+      setCameras(updatedCameras)
+      setIsEditDialogOpen(false)
+      setSelectedCamera(null)
+      resetForm()
+      
+      toast({
+        title: "Success",
+        description: "Camera updated successfully",
+      })
+    } catch (error) {
+      console.error("Error updating camera:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update camera. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleDeleteCamera = () => {
+  const handleDeleteCamera = async () => {
     if (!selectedCamera) return
 
-    // In a real app, this would be an API call
-    const updatedCameras = cameras.filter((camera) => camera.id !== selectedCamera.id)
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        toast({
+          title: "Error",
+          description: "Authentication token not found. Please log in again.",
+          variant: "destructive",
+        })
+        return
+      }
 
-    setCameras(updatedCameras)
-    setIsDeleteDialogOpen(false)
-    setSelectedCamera(null)
+      const response = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || "Failed to delete camera")
+      }
+
+      // Remove the camera from the list
+      const updatedCameras = cameras.filter((camera) => camera.id !== selectedCamera.id)
+      setCameras(updatedCameras)
+      setIsDeleteDialogOpen(false)
+      setSelectedCamera(null)
+      
+      toast({
+        title: "Success",
+        description: "Camera deleted successfully",
+      })
+    } catch (error) {
+      console.error("Error deleting camera:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete camera. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
-  const openEditDialog = (camera: any) => {
+  const openEditDialog = (camera: CameraData) => {
     setSelectedCamera(camera)
     setFormData({
       name: camera.name,
-      rtspUrl: `rtsp://192.168.1.${camera.id}:554/stream`,
-      username: "admin",
-      password: "password",
+      ip_address: camera.ip_address,
+      username: camera.username,
+      password: camera.password,
       location: camera.location,
-      fovZones: JSON.stringify(
-        [
-          {
-            id: 1,
-            name: "Zone A",
-            coordinates: [
-              [10, 10],
-              [100, 10],
-              [100, 100],
-              [10, 100],
-            ],
-          },
-        ],
-        null,
-        2,
-      ),
-      type: camera.type,
-      status: camera.status,
+      homography_map: JSON.stringify(camera.homography_map || {}),
+      fov_zones: JSON.stringify(camera.fov_zones || {}),
+      mall_id: camera.mall_id,
     })
     setIsEditDialogOpen(true)
   }
 
-  const openDeleteDialog = (camera: any) => {
+  const openDeleteDialog = (camera: CameraData) => {
     setSelectedCamera(camera)
     setIsDeleteDialogOpen(true)
   }
@@ -242,360 +435,328 @@ export default function CameraConfigPage() {
   return (
     <AuthenticatedLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Camera Configuration</h1>
-            <p className="text-muted-foreground">Manage and configure cameras in your mall</p>
-          </div>
-
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Camera
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
-              <DialogHeader>
-                <DialogTitle>Add New Camera</DialogTitle>
-                <DialogDescription>
-                  Enter the details for the new camera. Click save when you're done.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Camera Name</Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      placeholder="e.g., Entrance North"
-                      className={errors.name ? "border-destructive" : ""}
-                    />
-                    {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="location">Physical Location</Label>
-                    <Select value={formData.location} onValueChange={(value) => handleSelectChange("location", value)}>
-                      <SelectTrigger className={errors.location ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Select location" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {locationOptions.map((location) => (
-                          <SelectItem key={location} value={location}>
-                            {location}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="rtspUrl">RTSP IP Address</Label>
-                  <Input
-                    id="rtspUrl"
-                    name="rtspUrl"
-                    value={formData.rtspUrl}
-                    onChange={handleInputChange}
-                    placeholder="rtsp://192.168.1.100:554/stream"
-                    className={errors.rtspUrl ? "border-destructive" : ""}
-                  />
-                  {errors.rtspUrl && <p className="text-sm text-destructive">{errors.rtspUrl}</p>}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="username">RTSP Username (Optional)</Label>
-                    <Input
-                      id="username"
-                      name="username"
-                      value={formData.username}
-                      onChange={handleInputChange}
-                      placeholder="admin"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="password">RTSP Password (Optional)</Label>
-                    <Input
-                      id="password"
-                      name="password"
-                      type="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      placeholder="••••••••"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Camera Type</Label>
-                    <Select value={formData.type} onValueChange={(value) => handleSelectChange("type", value)}>
-                      <SelectTrigger className={errors.type ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Entrance">Entrance</SelectItem>
-                        <SelectItem value="Tracking">Tracking</SelectItem>
-                        <SelectItem value="Shelf">Shelf</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select value={formData.status} onValueChange={(value) => handleSelectChange("status", value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Active">Active</SelectItem>
-                        <SelectItem value="Inactive">Inactive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="fovZones">FOV Zones (JSON)</Label>
-                  <Textarea
-                    id="fovZones"
-                    name="fovZones"
-                    value={formData.fovZones}
-                    onChange={handleInputChange}
-                    placeholder='[{"id": 1, "name": "Zone A", "coordinates": [[10, 10], [100, 10], [100, 100], [10, 100]]}]'
-                    className={`font-mono text-sm h-32 ${errors.fovZones ? "border-destructive" : ""}`}
-                  />
-                  {errors.fovZones && <p className="text-sm text-destructive">{errors.fovZones}</p>}
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAddCamera}>Save Camera</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Camera Configuration</h1>
+          <p className="text-muted-foreground">Manage your mall's camera system</p>
         </div>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Camera List</CardTitle>
-            <CardDescription>All configured cameras in your mall</CardDescription>
+          <CardHeader className="pb-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <CardTitle>Cameras</CardTitle>
+                <CardDescription>View and manage all cameras in your mall</CardDescription>
+              </div>
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Camera
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[600px]">
+                  <DialogHeader>
+                    <DialogTitle>Add New Camera</DialogTitle>
+                    <DialogDescription>Enter the details for the new camera</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Camera Name</Label>
+                        <Input
+                          id="name"
+                          name="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          placeholder="Entrance North"
+                          className={errors.name ? "border-destructive" : ""}
+                        />
+                        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="ip_address">IP Address</Label>
+                        <Input
+                          id="ip_address"
+                          name="ip_address"
+                          value={formData.ip_address}
+                          onChange={handleInputChange}
+                          placeholder="192.168.1.100"
+                          className={errors.ip_address ? "border-destructive" : ""}
+                        />
+                        {errors.ip_address && <p className="text-sm text-destructive">{errors.ip_address}</p>}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="username">Username</Label>
+                        <Input
+                          id="username"
+                          name="username"
+                          value={formData.username}
+                          onChange={handleInputChange}
+                          placeholder="admin"
+                          className={errors.username ? "border-destructive" : ""}
+                        />
+                        {errors.username && <p className="text-sm text-destructive">{errors.username}</p>}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="password">Password</Label>
+                        <Input
+                          id="password"
+                          name="password"
+                          type="password"
+                          value={formData.password}
+                          onChange={handleInputChange}
+                          placeholder="••••••••"
+                          className={errors.password ? "border-destructive" : ""}
+                        />
+                        {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="location">Location</Label>
+                      <Input
+                        id="location"
+                        name="location"
+                        value={formData.location}
+                        onChange={handleInputChange}
+                        placeholder="Enter camera location"
+                        className={errors.location ? "border-destructive" : ""}
+                      />
+                      {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="homography_map">Homography Map (JSON)</Label>
+                      <Textarea
+                        id="homography_map"
+                        name="homography_map"
+                        value={formData.homography_map}
+                        onChange={handleInputChange}
+                        placeholder="{}"
+                        className={`font-mono text-sm h-32 ${errors.homography_map ? "border-destructive" : ""}`}
+                      />
+                      {errors.homography_map && <p className="text-sm text-destructive">{errors.homography_map}</p>}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="fov_zones">FOV Zones (JSON)</Label>
+                      <Textarea
+                        id="fov_zones"
+                        name="fov_zones"
+                        value={formData.fov_zones}
+                        onChange={handleInputChange}
+                        placeholder='[{"id": 1, "name": "Zone A", "coordinates": [[10, 10], [100, 10], [100, 100], [10, 100]]}]'
+                        className={`font-mono text-sm h-32 ${errors.fov_zones ? "border-destructive" : ""}`}
+                      />
+                      {errors.fov_zones && <p className="text-sm text-destructive">{errors.fov_zones}</p>}
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleAddCamera}>Add Camera</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {cameras.map((camera) => (
-                  <TableRow key={camera.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Camera
-                          className={`h-4 w-4 ${camera.status === "Active" ? "text-green-500" : "text-muted-foreground"}`}
-                        />
-                        {camera.name}
-                      </div>
-                    </TableCell>
-                    <TableCell>{camera.location}</TableCell>
-                    <TableCell>{camera.type}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={camera.status === "Active" ? "outline" : "secondary"}
-                        className={
-                          camera.status === "Active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-700"
-                        }
-                      >
-                        {camera.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(camera)}>
-                          <Edit className="h-4 w-4" />
-                          <span className="sr-only">Edit</span>
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(camera)}>
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Delete</span>
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                <p className="text-muted-foreground">Loading cameras...</p>
+              </div>
+            ) : cameras.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Camera className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No cameras found. Add your first camera to get started.</p>
+              </div>
+            ) : (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>IP Address</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cameras.map((camera) => (
+                      <TableRow key={camera.id}>
+                        <TableCell className="font-medium">{camera.name}</TableCell>
+                        <TableCell>{camera.ip_address}</TableCell>
+                        <TableCell>{camera.location}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                            Active
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDialog(camera)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                  <span className="sr-only">Edit</span>
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-[600px]">
+                                <DialogHeader>
+                                  <DialogTitle>Edit Camera</DialogTitle>
+                                  <DialogDescription>Update the camera details</DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-name">Camera Name</Label>
+                                      <Input
+                                        id="edit-name"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleInputChange}
+                                        className={errors.name ? "border-destructive" : ""}
+                                      />
+                                      {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-ip_address">IP Address</Label>
+                                      <Input
+                                        id="edit-ip_address"
+                                        name="ip_address"
+                                        value={formData.ip_address}
+                                        onChange={handleInputChange}
+                                        className={errors.ip_address ? "border-destructive" : ""}
+                                      />
+                                      {errors.ip_address && <p className="text-sm text-destructive">{errors.ip_address}</p>}
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-username">Username</Label>
+                                      <Input
+                                        id="edit-username"
+                                        name="username"
+                                        value={formData.username}
+                                        onChange={handleInputChange}
+                                        className={errors.username ? "border-destructive" : ""}
+                                      />
+                                      {errors.username && <p className="text-sm text-destructive">{errors.username}</p>}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-password">Password</Label>
+                                      <Input
+                                        id="edit-password"
+                                        name="password"
+                                        type="password"
+                                        value={formData.password}
+                                        onChange={handleInputChange}
+                                        className={errors.password ? "border-destructive" : ""}
+                                      />
+                                      {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-location">Location</Label>
+                                    <Input
+                                      id="edit-location"
+                                      name="location"
+                                      value={formData.location}
+                                      onChange={handleInputChange}
+                                      placeholder="Enter camera location"
+                                      className={errors.location ? "border-destructive" : ""}
+                                    />
+                                    {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-homography_map">Homography Map (JSON)</Label>
+                                    <Textarea
+                                      id="edit-homography_map"
+                                      name="homography_map"
+                                      value={formData.homography_map}
+                                      onChange={handleInputChange}
+                                      className={`font-mono text-sm h-32 ${errors.homography_map ? "border-destructive" : ""}`}
+                                    />
+                                    {errors.homography_map && <p className="text-sm text-destructive">{errors.homography_map}</p>}
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="edit-fov_zones">FOV Zones (JSON)</Label>
+                                    <Textarea
+                                      id="edit-fov_zones"
+                                      name="fov_zones"
+                                      value={formData.fov_zones}
+                                      onChange={handleInputChange}
+                                      className={`font-mono text-sm h-32 ${errors.fov_zones ? "border-destructive" : ""}`}
+                                    />
+                                    {errors.fov_zones && <p className="text-sm text-destructive">{errors.fov_zones}</p>}
+                                  </div>
+                                </div>
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                                    Cancel
+                                  </Button>
+                                  <Button onClick={handleEditCamera}>Save Changes</Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+
+                            <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openDeleteDialog(camera)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  <span className="sr-only">Delete</span>
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Delete Camera</DialogTitle>
+                                  <DialogDescription>
+                                    Are you sure you want to delete this camera? This action cannot be undone.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter>
+                                  <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+                                    Cancel
+                                  </Button>
+                                  <Button variant="destructive" onClick={handleDeleteCamera}>
+                                    Delete
+                                  </Button>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Edit Camera Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Edit Camera</DialogTitle>
-            <DialogDescription>Update the details for this camera. Click save when you're done.</DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Camera Name</Label>
-                <Input
-                  id="edit-name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className={errors.name ? "border-destructive" : ""}
-                />
-                {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-location">Physical Location</Label>
-                <Select value={formData.location} onValueChange={(value) => handleSelectChange("location", value)}>
-                  <SelectTrigger className={errors.location ? "border-destructive" : ""}>
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locationOptions.map((location) => (
-                      <SelectItem key={location} value={location}>
-                        {location}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-rtspUrl">RTSP IP Address</Label>
-              <Input
-                id="edit-rtspUrl"
-                name="rtspUrl"
-                value={formData.rtspUrl}
-                onChange={handleInputChange}
-                className={errors.rtspUrl ? "border-destructive" : ""}
-              />
-              {errors.rtspUrl && <p className="text-sm text-destructive">{errors.rtspUrl}</p>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-username">RTSP Username</Label>
-                <Input id="edit-username" name="username" value={formData.username} onChange={handleInputChange} />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-password">RTSP Password</Label>
-                <Input
-                  id="edit-password"
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-type">Camera Type</Label>
-                <Select value={formData.type} onValueChange={(value) => handleSelectChange("type", value)}>
-                  <SelectTrigger className={errors.type ? "border-destructive" : ""}>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Entrance">Entrance</SelectItem>
-                    <SelectItem value="Tracking">Tracking</SelectItem>
-                    <SelectItem value="Shelf">Shelf</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Status</Label>
-                <Select value={formData.status} onValueChange={(value) => handleSelectChange("status", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-fovZones">FOV Zones (JSON)</Label>
-              <Textarea
-                id="edit-fovZones"
-                name="fovZones"
-                value={formData.fovZones}
-                onChange={handleInputChange}
-                className={`font-mono text-sm h-32 ${errors.fovZones ? "border-destructive" : ""}`}
-              />
-              {errors.fovZones && <p className="text-sm text-destructive">{errors.fovZones}</p>}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleEditCamera}>Save Changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Camera Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Camera</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this camera? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedCamera && (
-            <div className="py-4">
-              <p className="font-medium">{selectedCamera.name}</p>
-              <p className="text-sm text-muted-foreground">{selectedCamera.location}</p>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteCamera}>
-              Delete Camera
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </AuthenticatedLayout>
   )
 }

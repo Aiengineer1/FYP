@@ -679,7 +679,7 @@ export default function SettingsPage() {
               <li>Your personal information</li>
               <li>All registered malls and their data</li>
               <li>All settings and preferences</li>
-              <li>All access to the RetailIQ platform</li>
+              <li>All access to the InsightCart platform</li>
             </ul>
 
             <div className="space-y-2">

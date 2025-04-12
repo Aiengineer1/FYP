@@ -34,7 +34,7 @@ export default function Navbar() {
       <div className="container flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <ShoppingBag className="h-6 w-6" />
-          <span className="font-bold text-xl">RetailIQ</span>
+          <span className="font-bold text-xl">InsightCart</span>
         </Link>
 
         <nav className="flex items-center gap-4">
