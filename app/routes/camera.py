@@ -9,7 +9,8 @@ router = APIRouter()
 
 @router.post("/add_camera", response_model=CameraResponse)
 def add_camera(camera: CameraCreate, db: Session = Depends(get_db)):
-    return create_camera(db, camera)
+    camera_data = camera.model_dump()
+    return create_camera(db, camera_data)
 
 @router.get("/{camera_id}", response_model=CameraResponse)
 def read_camera(camera_id: int, db: Session = Depends(get_db)):
@@ -18,14 +19,15 @@ def read_camera(camera_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Camera not found")
     return db_camera
 
-@router.get("/mall/{mall_id}", response_model=List[CameraResponse])
+@router.get("/mall/{mall_id}/cameras", response_model=List[CameraResponse])
 def read_cameras_by_mall(mall_id: int, db: Session = Depends(get_db)):
     cameras = get_cameras_by_mall(db, mall_id)
     return cameras
 
 @router.put("/{camera_id}", response_model=CameraResponse)
 def update_camera_route(camera_id: int, camera: CameraCreate, db: Session = Depends(get_db)):
-    db_camera = update_camera(db, camera_id, camera)
+    camera_data = camera.model_dump()
+    db_camera = update_camera(db, camera_id, camera_data)
     if db_camera is None:
         raise HTTPException(status_code=404, detail="Camera not found")
     return db_camera
