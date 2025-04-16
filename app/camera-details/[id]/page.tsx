@@ -22,14 +22,14 @@ const getCameraDetails = (id: string) => {
     id: numId,
     name: isActive
       ? [
-          "Entrance North",
-          "Food Court",
-          "Main Hallway",
-          "Parking A",
-          "Electronics Section",
-          "Kids Zone",
-          "Clothing Department",
-        ][numId % 7]
+        "Entrance North",
+        "Food Court",
+        "Main Hallway",
+        "Parking A",
+        "Electronics Section",
+        "Kids Zone",
+        "Clothing Department",
+      ][numId % 7]
       : ["Entrance South", "Storage Area", "Parking B", "Staff Room", "Emergency Exit"][numId % 5],
     location: ["North Entrance", "Level 2", "Level 1", "Basement", "Level 3"][numId % 5],
     type: ["Entrance", "Tracking", "Shelf"][numId % 3],

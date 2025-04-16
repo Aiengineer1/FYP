@@ -52,19 +52,6 @@ interface CameraFormData {
   mall_id: number
 }
 
-const locationOptions = [
-  "North Entrance",
-  "South Entrance",
-  "East Entrance",
-  "West Entrance",
-  "Level 1",
-  "Level 2",
-  "Level 3",
-  "Basement",
-  "Food Court",
-  "Parking Area",
-]
-
 export default function CameraConfigPage() {
   const { toast } = useToast()
   const [cameras, setCameras] = useState<CameraData[]>([])
@@ -123,7 +110,7 @@ export default function CameraConfigPage() {
         return
       }
 
-      const response = await fetch(`http://localhost:8000/camera/mall/${user.mall_id}`, {
+      const response = await fetch(`http://localhost:8000/mall/${user.mall_id}/cameras`, {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -272,7 +259,7 @@ export default function CameraConfigPage() {
         fov_zones: JSON.parse(formData.fov_zones),
       }
 
-      const response = await fetch("http://localhost:8000/camera/add_camera", {
+      const response = await fetch("http://localhost:8000/add_camera", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -290,7 +277,7 @@ export default function CameraConfigPage() {
       setCameras([...cameras, newCamera])
       setIsAddDialogOpen(false)
       resetForm()
-      
+
       toast({
         title: "Success",
         description: "Camera added successfully",
@@ -326,7 +313,7 @@ export default function CameraConfigPage() {
         fov_zones: JSON.parse(formData.fov_zones),
       }
 
-      const response = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`, {
+      const response = await fetch(`http://localhost:8000/${selectedCamera.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -341,17 +328,17 @@ export default function CameraConfigPage() {
       }
 
       const updatedCamera = await response.json()
-      
+
       // Update the cameras list
       const updatedCameras = cameras.map((camera) =>
         camera.id === selectedCamera.id ? updatedCamera : camera
       )
-      
+
       setCameras(updatedCameras)
       setIsEditDialogOpen(false)
       setSelectedCamera(null)
       resetForm()
-      
+
       toast({
         title: "Success",
         description: "Camera updated successfully",
@@ -380,7 +367,7 @@ export default function CameraConfigPage() {
         return
       }
 
-      const response = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`, {
+      const response = await fetch(`http://localhost:8000/${selectedCamera.id}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${token}`
@@ -397,7 +384,7 @@ export default function CameraConfigPage() {
       setCameras(updatedCameras)
       setIsDeleteDialogOpen(false)
       setSelectedCamera(null)
-      
+
       toast({
         title: "Success",
         description: "Camera deleted successfully",

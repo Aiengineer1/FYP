@@ -103,8 +103,8 @@ export default function SignupPage() {
       router.push("/auth-check")
     } catch (error) {
       console.error("Signup error:", error);
-      setErrors({ 
-        email: error instanceof Error ? error.message : "An error occurred during signup" 
+      setErrors({
+        email: error instanceof Error ? error.message : "An error occurred during signup"
       });
     } finally {
       setIsLoading(false)
