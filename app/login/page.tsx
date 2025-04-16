@@ -17,6 +17,10 @@ export default function LoginPage() {
     email: "",
     password: "",
   })
+  const [errors, setErrors] = useState({
+    email: "",
+    password: "",
+  })
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -24,15 +28,20 @@ export default function LoginPage() {
       ...prev,
       [name]: value,
     }))
+    setErrors(prev => ({
+      ...prev,
+      [name]: ""
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setErrors({ email: "", password: "" })
 
     try {
       console.log("Attempting login with:", formData.email)
-      
+
       const response = await fetch("http://localhost:8000/auth/login", {
         method: "POST",
         headers: {
@@ -43,10 +52,29 @@ export default function LoginPage() {
 
       const data = await response.json()
       console.log("Login response data:", data)
-      console.log("Mall ID:", data.mall_id)
+      console.log("Response status:", response.status)
+      console.log("Error detail:", data.detail)
 
       if (!response.ok) {
-        throw new Error(data.detail || "Login failed")
+        if (data.detail === "Invalid credentials") {
+          setErrors({
+            email: "Invalid email or password",
+            password: "Invalid email or password"
+          })
+          return
+        } else if (data.detail === "Account not found" || response.status === 404) {
+          setErrors({
+            email: "Account not found",
+            password: ""
+          })
+          return
+        } else {
+          setErrors({
+            email: data.detail || "Login failed",
+            password: data.detail || "Login failed"
+          })
+          return
+        }
       }
 
       // Store user data and token in localStorage
@@ -108,7 +136,11 @@ export default function LoginPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="Enter your email"
+                className={errors.email ? "border-destructive" : ""}
               />
+              {errors.email && (
+                <p className="text-sm text-destructive mt-1">{errors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -121,7 +153,11 @@ export default function LoginPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="Enter your password"
+                className={errors.password ? "border-destructive" : ""}
               />
+              {errors.password && (
+                <p className="text-sm text-destructive mt-1">{errors.password}</p>
+              )}
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>

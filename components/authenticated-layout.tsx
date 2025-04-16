@@ -22,9 +22,12 @@ import { Button } from "@/components/ui/button"
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isAdminOpen, setIsAdminOpen] = useState(false)
   const [mallName, setMallName] = useState<string>("")
+  const [userName, setUserName] = useState<string>("")
+  const [userEmail, setUserEmail] = useState<string>("")
+  const [userInitials, setUserInitials] = useState<string>("")
 
   // Auto-expand admin panel when on admin pages
   useEffect(() => {
@@ -33,14 +36,22 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
     }
   }, [pathname])
 
-  // Fetch mall data when component mounts
+  // Fetch user and mall data when component mounts
   useEffect(() => {
-    const fetchMallData = async () => {
+    const fetchData = async () => {
       try {
         const userData = localStorage.getItem("user")
         if (!userData) return
 
         const user = JSON.parse(userData)
+        setUserName(user.name || user.email)
+        setUserEmail(user.email)
+        // Get initials from name or email
+        const initials = user.name
+          ? user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+          : user.email[0].toUpperCase()
+        setUserInitials(initials)
+
         const token = localStorage.getItem("token")
         if (!token) return
 
@@ -57,46 +68,49 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
         const data = await response.json()
         setMallName(data.name)
       } catch (error) {
-        console.error("Error fetching mall data:", error)
+        console.error("Error fetching data:", error)
         setMallName("Loading...")
       }
     }
 
-    fetchMallData()
+    fetchData()
   }, [])
 
   return (
     <div className="flex min-h-screen">
-      {/* Mobile sidebar toggle */}
-      <div className="fixed top-4 left-4 z-50 md:hidden">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="bg-background"
-        >
-          {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
-      </div>
-
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 w-64 transform transition-transform duration-300 ease-in-out ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } md:relative md:translate-x-0`}
+        className={`fixed inset-y-0 left-0 z-40 w-64 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <div className="flex flex-col h-full border-r bg-background">
           <div className="border-b px-6 py-3 flex items-center justify-between">
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <ShoppingBag className="h-6 w-6" />
-              <span className="font-bold text-xl">InsightCart</span>
-            </Link>
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
-              <X className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="bg-background"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+              <Link href="/dashboard" className="flex items-center gap-2">
+                <ShoppingBag className="h-6 w-6" />
+                <span className="font-bold text-xl">InsightCart</span>
+              </Link>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto py-4">
+            <div className="px-6 mb-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">User</span>
+              </div>
+              <div className="mt-1">
+                <p className="font-medium">{userName || "Loading..."}</p>
+              </div>
+            </div>
+
             <div className="px-6 mb-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted-foreground">Mall</span>
@@ -165,11 +179,11 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
           <div className="border-t p-6">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-primary flex items-center justify-center text-primary-foreground">
-                <span className="text-sm font-medium">JD</span>
+                <span className="text-sm font-medium">{userInitials || "?"}</span>
               </div>
               <div>
-                <p className="text-sm font-medium">John Doe</p>
-                <p className="text-xs text-muted-foreground">john.doe@example.com</p>
+                <p className="text-sm font-medium">{userName || "Loading..."}</p>
+                <p className="text-xs text-muted-foreground">{userEmail || "Loading..."}</p>
               </div>
             </div>
           </div>

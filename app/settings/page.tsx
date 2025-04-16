@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Save, User, Lock, Camera, Trash2, AlertTriangle } from "lucide-react"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
@@ -27,14 +27,53 @@ import { useRouter } from "next/navigation"
 export default function SettingsPage() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [userData, setUserData] = useState<any>(null)
+  const [mallData, setMallData] = useState<any>(null)
+
+  // Load user and mall data on component mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const userDataStr = localStorage.getItem("user")
+        if (!userDataStr) return
+
+        const user = JSON.parse(userDataStr)
+        setUserData(user)
+
+        const token = localStorage.getItem("token")
+        if (!token) return
+
+        const response = await fetch(`http://localhost:8000/mall/${user.mall_id}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch mall data")
+        }
+
+        const mallData = await response.json()
+        setMallData(mallData)
+      } catch (error) {
+        console.error("Error loading data:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load user and mall data",
+          variant: "destructive",
+        })
+      }
+    }
+
+    loadData()
+  }, [toast])
 
   // Account settings state
   const [accountSettings, setAccountSettings] = useState({
-    name: "John Doe",
-    email: "john.doe@example.com",
-    mallName: "Central City Mall", // Display only
-    mallContactEmail: "contact@centralcitymall.com",
-    mallContactNumber: "123-456-7890",
+    name: userData?.name || "",
+    email: userData?.email || "",
+    mallName: mallData?.name || "",
+    mallAddress: mallData?.address || "",
   })
 
   // Security settings state
@@ -54,8 +93,7 @@ export default function SettingsPage() {
   const [accountErrors, setAccountErrors] = useState<{
     name?: string
     email?: string
-    mallContactEmail?: string
-    mallContactNumber?: string
+    mallAddress?: string
   }>({})
 
   const [securityErrors, setSecurityErrors] = useState<{
@@ -113,8 +151,7 @@ export default function SettingsPage() {
     const errors: {
       name?: string
       email?: string
-      mallContactEmail?: string
-      mallContactNumber?: string
+      mallAddress?: string
     } = {}
     let isValid = true
 
@@ -131,19 +168,8 @@ export default function SettingsPage() {
       isValid = false
     }
 
-    if (!accountSettings.mallContactEmail.trim()) {
-      errors.mallContactEmail = "Mall contact email is required"
-      isValid = false
-    } else if (!validateEmail(accountSettings.mallContactEmail)) {
-      errors.mallContactEmail = "Please enter a valid email address"
-      isValid = false
-    }
-
-    if (!accountSettings.mallContactNumber.trim()) {
-      errors.mallContactNumber = "Mall contact number is required"
-      isValid = false
-    } else if (!/^\d{3}-\d{3}-\d{4}$/.test(accountSettings.mallContactNumber)) {
-      errors.mallContactNumber = "Please enter a valid phone number (format: 123-456-7890)"
+    if (!accountSettings.mallAddress.trim()) {
+      errors.mallAddress = "Mall address is required"
       isValid = false
     }
 
@@ -401,36 +427,20 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="mallContactEmail">Mall Contact Email</Label>
-                    <Input
-                      id="mallContactEmail"
-                      name="mallContactEmail"
-                      type="email"
-                      value={accountSettings.mallContactEmail}
-                      onChange={handleAccountInputChange}
-                      className={accountErrors.mallContactEmail ? "border-destructive" : ""}
-                    />
-                    {accountErrors.mallContactEmail && (
-                      <p className="text-sm text-destructive">{accountErrors.mallContactEmail}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="mallContactNumber">Mall Contact Number</Label>
-                    <Input
-                      id="mallContactNumber"
-                      name="mallContactNumber"
-                      value={accountSettings.mallContactNumber}
-                      onChange={handleAccountInputChange}
-                      placeholder="123-456-7890"
-                      className={accountErrors.mallContactNumber ? "border-destructive" : ""}
-                    />
-                    {accountErrors.mallContactNumber && (
-                      <p className="text-sm text-destructive">{accountErrors.mallContactNumber}</p>
-                    )}
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mallAddress">Mall Address</Label>
+                  <Input
+                    id="mallAddress"
+                    name="mallAddress"
+                    value={accountSettings.mallAddress}
+                    onChange={handleAccountInputChange}
+                    className={accountErrors.mallAddress ? "border-destructive" : ""}
+                  />
+                  {accountErrors.mallAddress && (
+                    <p className="text-sm text-destructive">{accountErrors.mallAddress}</p>
+                  )}
                 </div>
+
                 <div className="space-y-6 pt-6">
                   <Separator />
                   <div className="space-y-2">

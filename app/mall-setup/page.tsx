@@ -45,7 +45,7 @@ export default function MallSetupPage() {
       // Get user_id and token from localStorage
       const user_id = localStorage.getItem("user_id")
       const token = localStorage.getItem("token")
-      
+
       if (!user_id || !token) {
         toast({
           title: "Error",
@@ -67,21 +67,21 @@ export default function MallSetupPage() {
 
       // Create FormData for multipart/form-data
       const formDataToSend = new FormData()
-      
+
       // Add the image file directly to FormData
       formDataToSend.append("map_image", formData.map_image)
 
       console.log("Sending form data with image:", formData.map_image?.name)
       console.log("User ID:", user_id)
-      
+
       // Create URL with query parameters
       const url = new URL("http://localhost:8000/mall/create")
       url.searchParams.append("name", formData.name)
       url.searchParams.append("address", formData.address)
       url.searchParams.append("user_id", user_id)
-      
+
       console.log("Request URL:", url.toString())
-      
+
       const response = await fetch(url.toString(), {
         method: "POST",
         headers: {
@@ -91,7 +91,7 @@ export default function MallSetupPage() {
       })
 
       console.log("Response status:", response.status)
-      
+
       // Get the response data
       const responseData = await response.json()
       console.log("Response data:", responseData)
@@ -99,21 +99,31 @@ export default function MallSetupPage() {
       if (!response.ok) {
         // Handle validation errors
         if (response.status === 422) {
-          const errorMessage = Array.isArray(responseData.detail) 
+          const errorMessage = Array.isArray(responseData.detail)
             ? responseData.detail.map((err: any) => `${err.loc.join('.')}: ${err.msg}`).join(", ")
             : responseData.detail || "Validation error"
           throw new Error(errorMessage)
         }
         throw new Error(responseData.detail || "Failed to create mall")
       }
-      
+
+      // Update user data with new mall_id
+      const userData = localStorage.getItem("user")
+      if (userData) {
+        const user = JSON.parse(userData)
+        user.mall_id = responseData.id
+        localStorage.setItem("user", JSON.stringify(user))
+        // Update cookie as well
+        document.cookie = `user=${JSON.stringify(user)}; path=/; max-age=86400; SameSite=Lax`
+      }
+
       toast({
         title: "Success",
         description: "Mall created successfully",
       })
 
-      // Redirect to dashboard or mall details page
-      router.push("/dashboard")
+      // Redirect to dashboard
+      window.location.href = "/dashboard"
     } catch (error) {
       console.error("Error creating mall:", error)
       toast({
