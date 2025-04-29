@@ -1,7 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { Map, Plus, Save, Play, Square, Trash2 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useToast } from "@/components/ui/use-toast"
+import { Map, Plus, Save, Play, Square, Trash2, Loader2, RefreshCw, AlertCircle } from "lucide-react"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,38 +14,266 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 
-// Mock data - in a real app, this would come from an API
-const cameras = [
-  { id: 1, name: "Entrance North", location: "North Entrance", status: "Active" },
-  { id: 2, name: "Food Court", location: "Level 2", status: "Active" },
-  { id: 3, name: "Main Hallway", location: "Level 1", status: "Active" },
-  { id: 4, name: "Parking A", location: "Basement", status: "Active" },
-  { id: 5, name: "Electronics Section", location: "Level 3", status: "Active" },
-]
+interface Camera {
+  id: number
+  name: string
+  ip_address: string
+  username: string
+  password: string
+  location: string
+  homography_map: any
+  fov_zones: any[]
+  mall_id: number
+  created_at: string
+}
+
+interface Point {
+  x: number
+  y: number
+}
+
+interface FOVZone {
+  name: string
+  points: Point[]
+}
 
 export default function HomographyMappingPage() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [cameras, setCameras] = useState<Camera[]>([])
   const [selectedCamera, setSelectedCamera] = useState<string>("")
   const [currentStep, setCurrentStep] = useState<number>(1)
   const [zoneName, setZoneName] = useState<string>("")
   const [objectName, setObjectName] = useState<string>("")
-  const [zones, setZones] = useState<any[]>([])
+  const [zones, setZones] = useState<FOVZone[]>([])
   const [objects, setObjects] = useState<any[]>([])
   const [systemRunning, setSystemRunning] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [mallMapImage, setMallMapImage] = useState<string>("")
+  const [cameraFrame, setCameraFrame] = useState<string>("")
+  const [isCapturing, setIsCapturing] = useState(false)
+  const [captureError, setCaptureError] = useState<string | null>(null)
 
+  // Fetch cameras and mall map when component mounts
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const userData = localStorage.getItem("user")
+        const token = localStorage.getItem("token")
+
+        if (!userData || !token) {
+          throw new Error("User data or token not found")
+        }
+
+        const user = JSON.parse(userData)
+
+        // Fetch mall map image
+        const mallResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/image`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        })
+
+        if (!mallResponse.ok) {
+          throw new Error("Failed to fetch mall map")
+        }
+
+        const mallImageBlob = await mallResponse.blob()
+        const mallImageUrl = URL.createObjectURL(mallImageBlob)
+        setMallMapImage(mallImageUrl)
+
+        // Fetch cameras for the mall
+        const camerasResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/cameras`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        })
+
+        if (!camerasResponse.ok) {
+          throw new Error("Failed to fetch cameras")
+        }
+
+        const camerasData = await camerasResponse.json()
+        if (!Array.isArray(camerasData)) {
+          throw new Error("Invalid cameras data received")
+        }
+        setCameras(camerasData)
+      } catch (error) {
+        console.error("Error fetching data:", error)
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to fetch data",
+          variant: "destructive",
+        })
+        setCameras([])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [toast])
+
+  // Function to get camera frame from backend
+  const getCameraFrame = async (camera: Camera) => {
+    try {
+      setIsCapturing(true)
+      setCaptureError(null)
+
+      const token = localStorage.getItem("token")
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please login to continue",
+          variant: "destructive",
+        })
+        router.push("/login")
+        return
+      }
+
+      // Construct RTSP URL with correct format
+      const rtspUrl = `rtsp://${camera.username}:${camera.password}@${camera.ip_address}:554/cam/realmonitor?channel=1&subtype=0`
+
+      // Log the RTSP URL for debugging (without password)
+      console.log("Attempting to access camera:", {
+        ip: camera.ip_address,
+        username: camera.username,
+        url: `rtsp://${camera.username}:****@${camera.ip_address}:554/cam/realmonitor?channel=1&subtype=0`
+      })
+
+      const response = await fetch("http://localhost:8000/camera/frame", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify({ rtsp_url: rtspUrl })
+      })
+
+      // Log response details for debugging
+      console.log("Response status:", response.status)
+      console.log("Response headers:", Object.fromEntries(response.headers.entries()))
+
+      if (response.status === 401) {
+        toast({
+          title: "Session Expired",
+          description: "Your session has expired. Please login again.",
+          variant: "destructive",
+        })
+        localStorage.removeItem("token")
+        localStorage.removeItem("user")
+        router.push("/login")
+        return
+      }
+
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type")
+        console.log("Response content type:", contentType)
+
+        let errorMessage = "Failed to get camera frame"
+
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const errorData = await response.json()
+            console.log("Error response data:", errorData)
+
+            // Handle specific RTSP authentication errors
+            if (errorData.detail && errorData.detail.includes("Unauthorized")) {
+              errorMessage = "Camera authentication failed. Please check camera credentials."
+            } else {
+              errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData)
+            }
+          } catch (e) {
+            console.error("Error parsing JSON response:", e)
+          }
+        } else {
+          try {
+            const text = await response.text()
+            console.log("Non-JSON response:", text)
+            errorMessage = text || "Unknown error occurred"
+          } catch (e) {
+            console.error("Error reading response text:", e)
+          }
+        }
+
+        setCaptureError(errorMessage)
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        })
+        return
+      }
+
+      try {
+        const blob = await response.blob()
+        const objectUrl = URL.createObjectURL(blob)
+        setCameraFrame(objectUrl)
+      } catch (e) {
+        console.error("Error processing image:", e)
+        setCaptureError("Failed to process camera frame")
+        toast({
+          title: "Error",
+          description: "Failed to process camera frame",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      console.error("Error capturing frame:", error)
+      setCaptureError(error instanceof Error ? error.message : "Failed to capture frame")
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to capture frame",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCapturing(false)
+    }
+  }
+
+  // Clean up object URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      if (cameraFrame) {
+        URL.revokeObjectURL(cameraFrame)
+      }
+    }
+  }, [cameraFrame])
+
+  // Add authentication check only on initial component mount
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    if (!token) {
+      toast({
+        title: "Authentication Required",
+        description: "Please login to continue",
+        variant: "destructive",
+      })
+      router.push("/login")
+    }
+  }, []) // Empty dependency array means this runs only once on mount
+
+  // Handle camera selection
   const handleCameraSelect = (value: string) => {
     setSelectedCamera(value)
     setCurrentStep(1)
     setZones([])
     setObjects([])
+
+    // Get frame for selected camera
+    const camera = cameras.find(c => c.id.toString() === value)
+    if (camera) {
+      getCameraFrame(camera)
+    }
   }
 
+  // Handle adding a new zone
   const handleAddZone = () => {
     if (!zoneName) return
 
-    const newZone = {
-      id: zones.length + 1,
+    const newZone: FOVZone = {
       name: zoneName,
-      objects: [],
+      points: []
     }
 
     setZones([...zones, newZone])
@@ -51,32 +281,90 @@ export default function HomographyMappingPage() {
     setCurrentStep(3)
   }
 
-  const handleAddObject = () => {
-    if (!objectName) return
+  // Handle saving homography mapping
+  const handleSaveHomography = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        throw new Error("No authentication token found")
+      }
 
-    const newObject = {
-      id: objects.length + 1,
-      name: objectName,
-      points: 4,
+      const cameraId = parseInt(selectedCamera)
+      const response = await fetch(`http://localhost:8000/${cameraId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          homography_map: {
+            points: objects.map(obj => ({ x: obj.x, y: obj.y }))
+          }
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to save homography mapping")
+      }
+
+      toast({
+        title: "Success",
+        description: "Homography mapping saved successfully",
+      })
+    } catch (error) {
+      console.error("Error saving homography:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save homography mapping",
+        variant: "destructive",
+      })
     }
-
-    setObjects([...objects, newObject])
-    setObjectName("")
   }
 
-  const handleSaveZone = () => {
-    // In a real app, this would save the zone and objects to the backend
-    setCurrentStep(2)
-    setObjects([])
+  // Handle saving FOV zones
+  const handleSaveFOVZones = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      if (!token) {
+        throw new Error("No authentication token found")
+      }
+
+      const cameraId = parseInt(selectedCamera)
+      const response = await fetch(`http://localhost:8000/${cameraId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          fov_zones: zones
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to save FOV zones")
+      }
+
+      toast({
+        title: "Success",
+        description: "FOV zones saved successfully",
+      })
+    } catch (error) {
+      console.error("Error saving FOV zones:", error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save FOV zones",
+        variant: "destructive",
+      })
+    }
   }
 
-  const handleFinalApply = () => {
-    // In a real app, this would save all mappings to the backend
-    alert("Homography mappings saved successfully!")
-  }
-
-  const handleToggleSystem = () => {
-    setSystemRunning(!systemRunning)
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -114,7 +402,7 @@ export default function HomographyMappingPage() {
                 <Button
                   variant={systemRunning ? "destructive" : "default"}
                   className="flex-1"
-                  onClick={handleToggleSystem}
+                  onClick={() => setSystemRunning(!systemRunning)}
                 >
                   {systemRunning ? (
                     <>
@@ -129,9 +417,9 @@ export default function HomographyMappingPage() {
                   )}
                 </Button>
 
-                <Button variant="outline" className="flex-1" onClick={handleFinalApply}>
+                <Button variant="outline" className="flex-1" onClick={handleSaveHomography}>
                   <Save className="h-4 w-4 mr-2" />
-                  Final Apply
+                  Save Mapping
                 </Button>
               </div>
             </div>
@@ -161,32 +449,71 @@ export default function HomographyMappingPage() {
                       <div className="flex items-center justify-between">
                         <h3 className="text-lg font-medium">Mall Top-View Map</h3>
                       </div>
-                      <div className="aspect-square bg-muted rounded-md overflow-hidden relative">
-                        <img
-                          src="/placeholder.svg?height=500&width=500"
-                          alt="Mall top-view map"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <p className="text-muted-foreground">Mall map with interactive zones</p>
-                        </div>
+                      <div className="relative w-full h-[500px] bg-muted rounded-md overflow-hidden">
+                        {mallMapImage ? (
+                          <img
+                            src={mallMapImage}
+                            alt="Mall top-view map"
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <p className="text-muted-foreground">Loading mall map...</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <h3 className="text-lg font-medium">Camera View</h3>
-                        <Badge variant="outline">{cameras.find((c) => c.id.toString() === selectedCamera)?.name}</Badge>
-                      </div>
-                      <div className="aspect-square bg-muted rounded-md overflow-hidden relative">
-                        <img
-                          src="/placeholder.svg?height=500&width=500"
-                          alt="Camera view"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <p className="text-muted-foreground">Camera view with interactive zones</p>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">
+                            {cameras.find((c) => c.id.toString() === selectedCamera)?.name}
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const camera = cameras.find(c => c.id.toString() === selectedCamera)
+                              if (camera) {
+                                getCameraFrame(camera)
+                              }
+                            }}
+                            disabled={isCapturing}
+                          >
+                            {isCapturing ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Capturing...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Refresh Frame
+                              </>
+                            )}
+                          </Button>
                         </div>
+                      </div>
+                      <div className="relative w-full h-[500px] bg-muted rounded-md overflow-hidden">
+                        {captureError ? (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                            <AlertCircle className="h-8 w-8 text-destructive mb-2" />
+                            <p className="text-destructive font-medium">Failed to capture frame</p>
+                            <p className="text-sm text-muted-foreground">{captureError}</p>
+                          </div>
+                        ) : cameraFrame ? (
+                          <img
+                            src={cameraFrame}
+                            alt="Camera view"
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <p className="text-muted-foreground">No camera frame available</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -235,7 +562,12 @@ export default function HomographyMappingPage() {
                         </div>
 
                         <div className="flex items-end space-x-2">
-                          <Button className="flex-1" onClick={handleAddObject} disabled={!objectName}>
+                          <Button className="flex-1" onClick={() => {
+                            if (objectName) {
+                              setObjects([...objects, { name: objectName, points: [] }])
+                              setObjectName("")
+                            }
+                          }} disabled={!objectName}>
                             <Plus className="h-4 w-4 mr-2" />
                             Add Object
                           </Button>
@@ -243,7 +575,7 @@ export default function HomographyMappingPage() {
                           <Button
                             variant="outline"
                             className="flex-1"
-                            onClick={handleSaveZone}
+                            onClick={handleSaveFOVZones}
                             disabled={objects.length === 0}
                           >
                             <Save className="h-4 w-4 mr-2" />
@@ -263,13 +595,19 @@ export default function HomographyMappingPage() {
                         <div className="space-y-2">
                           <h4 className="font-medium">Objects in Current Zone</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            {objects.map((object) => (
-                              <div key={object.id} className="flex items-center justify-between p-2 border rounded-md">
+                            {objects.map((object, index) => (
+                              <div key={index} className="flex items-center justify-between p-2 border rounded-md">
                                 <div>
                                   <p className="font-medium">{object.name}</p>
-                                  <p className="text-xs text-muted-foreground">{object.points} points mapped</p>
+                                  <p className="text-xs text-muted-foreground">{object.points.length} points mapped</p>
                                 </div>
-                                <Button variant="ghost" size="icon">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setObjects(objects.filter((_, i) => i !== index))
+                                  }}
+                                >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -286,19 +624,26 @@ export default function HomographyMappingPage() {
                     <div className="space-y-4">
                       <h3 className="text-lg font-medium">Defined Zones</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {zones.map((zone) => (
-                          <Card key={zone.id}>
+                        {zones.map((zone, index) => (
+                          <Card key={index}>
                             <CardHeader className="pb-2">
                               <CardTitle className="text-base">{zone.name}</CardTitle>
                             </CardHeader>
                             <CardContent>
-                              <p className="text-sm text-muted-foreground">{zone.objects.length} objects mapped</p>
+                              <p className="text-sm text-muted-foreground">{zone.points.length} points mapped</p>
                             </CardContent>
                             <CardFooter className="flex justify-end gap-2 pt-0">
                               <Button variant="outline" size="sm" onClick={() => setCurrentStep(3)}>
                                 Edit
                               </Button>
-                              <Button variant="ghost" size="sm" className="text-destructive">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive"
+                                onClick={() => {
+                                  setZones(zones.filter((_, i) => i !== index))
+                                }}
+                              >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </CardFooter>
