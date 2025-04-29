@@ -455,7 +455,7 @@ export default function CameraConfigPage() {
                           name="name"
                           value={formData.name}
                           onChange={handleInputChange}
-                          placeholder="Entrance North"
+                          placeholder="Camera x"
                           className={errors.name ? "border-destructive" : ""}
                         />
                         {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
@@ -468,7 +468,7 @@ export default function CameraConfigPage() {
                           name="ip_address"
                           value={formData.ip_address}
                           onChange={handleInputChange}
-                          placeholder="192.168.1.100"
+                          placeholder="192.168.0.2"
                           className={errors.ip_address ? "border-destructive" : ""}
                         />
                         {errors.ip_address && <p className="text-sm text-destructive">{errors.ip_address}</p>}
