@@ -1,11 +1,52 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List
+from pydantic import BaseModel
+import cv2
+import numpy as np
 from ..schemas.camera import CameraCreate, CameraResponse
 from ..crud import create_camera, get_camera, update_camera, delete_camera, get_cameras_by_mall
 from ..database import get_db
+from app.dependencies import get_current_user
 
 router = APIRouter()
+
+class RTSPRequest(BaseModel):
+    rtsp_url: str
+
+@router.post("/camera/frame")
+async def get_camera_frame(
+    request: RTSPRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Open RTSP stream
+        cap = cv2.VideoCapture(request.rtsp_url)
+        print(request.rtsp_url)
+        if not cap.isOpened():
+            raise HTTPException(status_code=500, detail="Failed to open camera stream")
+        
+        # Read a frame
+        ret, frame = cap.read()
+        if not ret:
+            raise HTTPException(status_code=500, detail="Failed to read frame")
+        
+        # Convert frame to JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+        
+        # Release resources
+        cap.release()
+        
+        # Return frame as JPEG
+        return StreamingResponse(
+            iter([frame_bytes]),
+            media_type="image/jpeg"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/add_camera", response_model=CameraResponse)
 def add_camera(camera: CameraCreate, db: Session = Depends(get_db)):
@@ -36,3 +77,44 @@ def update_camera_route(camera_id: int, camera: CameraCreate, db: Session = Depe
 def delete_camera_route(camera_id: int, db: Session = Depends(get_db)):
     delete_camera(db, camera_id)
     return {"detail": "Camera deleted"}
+
+@router.get("/{camera_id}/view")
+async def get_camera_view(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Get camera details from database
+        camera = get_camera(db, camera_id)
+        if not camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
+        
+        # Construct RTSP URL from camera credentials
+        rtsp_url = f"rtsp://{camera.username}:{camera.password}@{camera.ip_address}/stream1"
+        
+        # Open RTSP stream
+        cap = cv2.VideoCapture(rtsp_url)
+        if not cap.isOpened():
+            raise HTTPException(status_code=500, detail="Failed to open camera stream")
+        
+        # Read a frame
+        ret, frame = cap.read()
+        if not ret:
+            raise HTTPException(status_code=500, detail="Failed to read frame")
+        
+        # Convert frame to JPEG
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+        
+        # Release resources
+        cap.release()
+        
+        # Return frame as JPEG
+        return StreamingResponse(
+            iter([frame_bytes]),
+            media_type="image/jpeg"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

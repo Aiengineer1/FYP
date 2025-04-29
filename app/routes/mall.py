@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
+from starlette.responses import Response
 from ..schemas.mall import MallCreate, MallResponse, MallResponseWithImage
 from ..crud import create_mall, get_mall, update_mall, delete_mall, get_user, update_user
 from ..database import get_db

@@ -18,18 +18,18 @@ class UserResponse(UserBase):
     mall_id: Optional[int]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str
     user_id: int
     email: EmailStr
     name: str
     mall_id: Optional[int]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class MallStatusResponse(BaseModel):
     has_mall: bool

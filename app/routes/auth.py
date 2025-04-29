@@ -3,6 +3,10 @@ from sqlalchemy.orm import Session
 from ..schemas.user import UserCreate, UserResponse, UserLogin, MallStatusResponse, LoginResponse
 from ..crud import create_user, get_user_by_email, check_user_mall_status, delete_user
 from ..database import get_db
+from passlib.context import CryptContext
+from ..dependencies import create_access_token
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(
     prefix="/auth",
@@ -14,14 +18,20 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
     db_user = get_user_by_email(db, user.email)
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    return create_user(db=db, user_data=user.dict())
+    return create_user(db=db, user_data=user.model_dump())
 
 @router.post("/login", response_model=LoginResponse)
 def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = get_user_by_email(db, user.email)
-    if not db_user or db_user.password != user.password:
+    if not db_user or not pwd_context.verify(user.password, db_user.password):
         raise HTTPException(status_code=400, detail="Invalid credentials")
+    
+    # Create access token
+    access_token = create_access_token(data={"sub": db_user.email})
+    
     return {
+        "access_token": access_token,
+        "token_type": "bearer",
         "user_id": db_user.id,
         "email": db_user.email,
         "name": db_user.name,

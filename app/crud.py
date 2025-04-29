@@ -1,8 +1,15 @@
 from sqlalchemy.orm import Session
 from .models import User, Mall, Camera, Customer
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # CRUD operations for User
 def create_user(db: Session, user_data):
+    # Hash the password
+    hashed_password = pwd_context.hash(user_data["password"])
+    user_data["password"] = hashed_password
+    
     db_user = User(**user_data)
     db.add(db_user)
     db.commit()
