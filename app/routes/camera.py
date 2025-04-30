@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict
 from pydantic import BaseModel
 import cv2
 import numpy as np
@@ -14,6 +14,14 @@ router = APIRouter()
 
 class RTSPRequest(BaseModel):
     rtsp_url: str
+
+class HomographyMappingRequest(BaseModel):
+    camera_id: int
+    zones: List[Dict]
+
+class FOVZoneRequest(BaseModel):
+    camera_id: int
+    zone: Dict
 
 @router.post("/camera/frame")
 async def get_camera_frame(
@@ -116,5 +124,115 @@ async def get_camera_view(
             media_type="image/jpeg"
         )
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+
+# ... existing code ...
+
+@router.post("/homography/save-mappings")
+async def save_homography_mappings(
+    request: HomographyMappingRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Get camera
+        camera = get_camera(db, request.camera_id)
+        if not camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
+
+        # Update camera with new homography mappings
+        camera_data = {
+            "homography_map": {
+                "zones": request.zones
+            }
+        }
+        
+        updated_camera = update_camera(db, request.camera_id, camera_data)
+        if not updated_camera:
+            raise HTTPException(status_code=500, detail="Failed to update camera mappings")
+
+        return {"message": "Homography mappings saved successfully", "camera": updated_camera}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/fov/update-zone")
+async def update_fov_zone(
+    request: FOVZoneRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Get camera
+        camera = get_camera(db, request.camera_id)
+        if not camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
+
+        # Get existing FOV zones or initialize empty list
+        current_fov_zones = camera.fov_zones.get("zones", []) if camera.fov_zones else []
+
+        # Check if zone with same name exists
+        zone_index = next((i for i, z in enumerate(current_fov_zones) 
+                          if z.get("name") == request.zone.get("name")), -1)
+
+        if zone_index >= 0:
+            # Update existing zone
+            current_fov_zones[zone_index] = request.zone
+        else:
+            # Add new zone
+            current_fov_zones.append(request.zone)
+
+        # Update camera with new FOV zones
+        camera_data = {
+            "fov_zones": {
+                "zones": current_fov_zones
+            }
+        }
+        
+        updated_camera = update_camera(db, request.camera_id, camera_data)
+        if not updated_camera:
+            raise HTTPException(status_code=500, detail="Failed to update FOV zones")
+
+        return {"message": "FOV zone updated successfully", "camera": updated_camera}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/fov/delete-zone/{camera_id}/{zone_name}")
+async def delete_fov_zone(
+    camera_id: int,
+    zone_name: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Get camera
+        camera = get_camera(db, camera_id)
+        if not camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
+
+        # Get existing FOV zones
+        current_fov_zones = camera.fov_zones.get("zones", []) if camera.fov_zones else []
+
+        # Remove zone with matching name
+        updated_zones = [z for z in current_fov_zones if z.get("name") != zone_name]
+
+        # Update camera with new FOV zones
+        camera_data = {
+            "fov_zones": {
+                "zones": updated_zones
+            }
+        }
+        
+        updated_camera = update_camera(db, camera_id, camera_data)
+        if not updated_camera:
+            raise HTTPException(status_code=500, detail="Failed to delete FOV zone")
+
+        return {"message": "FOV zone deleted successfully", "camera": updated_camera}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
