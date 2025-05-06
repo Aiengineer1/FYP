@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { Map, Plus, Save, Play, Square, Trash2, Loader2, RefreshCw, AlertCircle } from "lucide-react"
+import { Map, Plus, Save, Play, Square, Trash2, Loader2, RefreshCw, AlertCircle, Edit } from "lucide-react"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -77,6 +77,18 @@ export default function HomographyMappingPage() {
   const [showSavePrompt, setShowSavePrompt] = useState(false)
   const [showMappingPrompt, setShowMappingPrompt] = useState(false)
   const [tempError, setTempError] = useState<string | null>(null)
+  const [isTesting, setIsTesting] = useState(false)
+  const [testPoints, setTestPoints] = useState<Point[]>([])
+  const [generatedMapPoints, setGeneratedMapPoints] = useState<Point[]>([])
+  const [zonesData, setZonesData] = useState<Array<{
+    name: string;
+    points: Point[];
+    objects: Array<{
+      name: string;
+      src_points: Point[];
+      dst_points: Point[];
+    }>;
+  }>>([]);
 
   // Fetch cameras and mall map when component mounts
   useEffect(() => {
@@ -412,9 +424,131 @@ export default function HomographyMappingPage() {
     setCurrentStep(4)
   }
 
-  // Modify handleSaveHomography to handle partial saves
+  // Modify handleImageClick for object mapping
+  const handleImageClick = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
+    if (!isSelecting && !isMappingMode) return;
+    if (isMappingMode && type !== selectionSequence) return;
+
+    const img = event.currentTarget;
+    const rect = img.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    if (isMappingMode && selectedObject) {
+      const currentZone = zones.find(zone => selectedObject.name.startsWith(zone.name));
+      if (!currentZone) return;
+
+      if (type === "camera" && selectedObject.src_points.length < 4) {
+        const newSrcPoints = [...selectedObject.src_points, { x, y, id: selectedObject.src_points.length + 1 }];
+        setSelectedObject(prev => ({
+          ...prev!,
+          src_points: newSrcPoints
+        }));
+
+        if (newSrcPoints.length === 4) {
+          setSelectionSequence("map");
+          toast({
+            title: "Camera points complete",
+            description: "Now select corresponding points on the map view",
+          });
+        }
+      } else if (type === "map" && selectedObject.dst_points.length < 4) {
+        // Only show error if point is outside zone
+        if (!isPointInsideZone({ x, y }, currentZone)) {
+          showTemporaryError("You are out of zone. Please select the object inside the zone.");
+          return;
+        }
+
+        const newDstPoints = [...selectedObject.dst_points, { x, y, id: selectedObject.dst_points.length + 1 }];
+
+        // Update the selected object with new points
+        const updatedObject = {
+          ...selectedObject,
+          dst_points: newDstPoints
+        };
+
+        setSelectedObject(updatedObject);
+
+        // Update the mapping objects array immediately
+        setMappingObjects(prev =>
+          prev.map(obj =>
+            obj.name === selectedObject.name ? updatedObject : obj
+          )
+        );
+
+        // Add validation for the last point
+        if (newDstPoints.length === 4) {
+          console.log("Debug: Map points complete:", {
+            object: selectedObject.name,
+            points: newDstPoints,
+            count: newDstPoints.length
+          });
+
+          // Validate that all points are selected
+          if (updatedObject.src_points.length === 4 && updatedObject.dst_points.length === 4) {
+            setMappingObjects(prev =>
+              prev.map(obj =>
+                obj.name === selectedObject.name ? updatedObject : obj
+              )
+            );
+            setSelectedObject(null);
+            setIsMappingMode(false);
+            setSelectionSequence("camera");
+            setShowMappingPrompt(true);
+          } else {
+            showTemporaryError("Please select all 4 points on both views");
+          }
+        }
+      }
+    }
+  };
+
+  // Add function to validate mapping completion
+  const validateMappingCompletion = (mapping: MappingObject) => {
+    const hasAllPoints = mapping.src_points.length === 4 && mapping.dst_points.length === 4;
+    const hasZonePoints = mapping.zone_points.length > 0;
+
+    if (!hasAllPoints) {
+      showTemporaryError(`Please complete all point selections for ${mapping.object_name}`);
+      return false;
+    }
+
+    if (!hasZonePoints) {
+      showTemporaryError(`Please ensure zone points are set for ${mapping.zone_name}`);
+      return false;
+    }
+
+    return true;
+  };
+
+  // Add function to complete mapping
+  const completeMapping = (mapping: MappingObject) => {
+    // Find the zone for this mapping
+    const zone = zones.find(z => z.name === mapping.zone_name);
+    if (!zone) {
+      showTemporaryError(`Zone ${mapping.zone_name} not found`);
+      return;
+    }
+
+    // Update the mapping with zone points
+    const updatedMapping = {
+      ...mapping,
+      zone_points: zone.points
+    };
+
+    setMappingObjects(prev =>
+      prev.map(obj =>
+        obj.name === mapping.name ? updatedMapping : obj
+      )
+    );
+
+    return updatedMapping;
+  };
+
+  // Modify handleSaveHomography to fix completedMappings processing
   const handleSaveHomography = async () => {
     if (!selectedCamera) {
+      console.log("Debug: No camera selected");
       toast({
         title: "Error",
         description: "Please select a camera first",
@@ -424,64 +558,191 @@ export default function HomographyMappingPage() {
     }
 
     try {
-      // Filter out incomplete mappings
-      const completedMappings = mappingObjects.filter(
-        obj => obj.src_points.length === 4 && obj.dst_points.length === 4
-      );
+      setIsSaving(true);
+      console.log("Debug: Starting save process");
+
+      // Debug all mapping objects
+      console.log("Debug: All mapping objects:", mappingObjects);
+      console.log("Debug: Mapping objects details:", mappingObjects.map(obj => ({
+        name: obj.name,
+        src_points_length: obj.src_points.length,
+        dst_points_length: obj.dst_points.length,
+        zone_points_length: obj.zone_points.length,
+        zone_name: obj.zone_name,
+        object_name: obj.object_name
+      })));
+
+      // First, process all mappings to add zone points
+      const processedMappings = mappingObjects.map(mapping => {
+        // Find the zone for this mapping
+        const zone = zones.find(z => z.name === mapping.zone_name);
+        if (!zone) {
+          console.log(`Debug: Zone not found for mapping ${mapping.name}`);
+          return null;
+        }
+
+        // Update the mapping with zone points if they're missing
+        const updatedMapping = {
+          ...mapping,
+          zone_points: mapping.zone_points.length > 0 ? mapping.zone_points : zone.points
+        };
+
+        console.log(`Debug: Processing mapping ${mapping.name}:`, {
+          original: {
+            src_points: mapping.src_points.length,
+            dst_points: mapping.dst_points.length,
+            zone_points: mapping.zone_points.length
+          },
+          updated: {
+            src_points: updatedMapping.src_points.length,
+            dst_points: updatedMapping.dst_points.length,
+            zone_points: updatedMapping.zone_points.length
+          }
+        });
+
+        return updatedMapping;
+      }).filter((mapping): mapping is MappingObject => mapping !== null);
+
+      console.log("Debug: Processed mappings:", processedMappings);
+
+      // Then filter for complete mappings
+      const completedMappings = processedMappings.filter(mapping => {
+        const isComplete = mapping.src_points.length === 4 &&
+          mapping.dst_points.length === 4 &&
+          mapping.zone_points.length > 0;
+
+        console.log(`Debug: Validating mapping ${mapping.name}:`, {
+          src_points: mapping.src_points.length,
+          dst_points: mapping.dst_points.length,
+          zone_points: mapping.zone_points.length,
+          isComplete,
+          requirements: {
+            needs_src_points: mapping.src_points.length !== 4,
+            needs_dst_points: mapping.dst_points.length !== 4,
+            needs_zone_points: mapping.zone_points.length === 0
+          }
+        });
+
+        return isComplete;
+      });
+
+      console.log("Debug: Completed mappings after processing:", completedMappings);
 
       if (completedMappings.length === 0) {
+        console.log("Debug: No completed mappings found");
+        const incompleteMappings = processedMappings.map(mapping => ({
+          name: mapping.name,
+          missing: {
+            src_points: 4 - mapping.src_points.length,
+            dst_points: 4 - mapping.dst_points.length,
+            zone_points: mapping.zone_points.length === 0 ? "missing" : "present"
+          }
+        }));
+
         toast({
-          title: "Error",
-          description: "No completed mappings to save",
+          title: "Incomplete Mappings",
+          description: `Please complete all mappings. Missing: ${incompleteMappings.map(m =>
+            `${m.name} (${m.missing.dst_points} map points)`
+          ).join(", ")}`,
           variant: "destructive"
         });
         return;
       }
 
-      // Group mappings by zone
-      const zones = completedMappings.reduce((acc, mapping) => {
-        const zoneName = mapping.zone_name;
-        if (!acc[zoneName]) {
-          acc[zoneName] = {
-            name: zoneName,
-            points: mapping.zone_points,
-            objects: []
-          };
-        }
-        acc[zoneName].objects.push({
-          name: mapping.object_name,
-          src_points: mapping.src_points,
-          dst_points: mapping.dst_points
-        });
-        return acc;
-      }, {} as Record<string, any>);
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.log("Debug: No authentication token found");
+        throw new Error("No authentication token found");
+      }
 
-      // Convert to array format
-      const zonesArray = Object.values(zones);
-
-      // Save to backend
-      const updatedCamera = await saveHomographyMappings({
+      // Prepare mappings data
+      const mappingsData = {
         camera_id: selectedCamera.id,
-        zones: zonesArray
+        zones: completedMappings.map(mapping => ({
+          name: mapping.zone_name,
+          points: mapping.zone_points.map(p => [p.x, p.y] as [number, number]),
+          objects: [{
+            name: mapping.object_name,
+            src_points: mapping.src_points.map(p => [p.x, p.y] as [number, number]),
+            dst_points: mapping.dst_points.map(p => [p.x, p.y] as [number, number])
+          }]
+        }))
+      };
+
+      console.log("Debug: Mappings data to be sent:", mappingsData);
+
+      // First API call - Save mappings
+      console.log("Debug: Making mappings API call");
+      const mappingsResponse = await fetch("http://localhost:8000/homography/save-mappings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify(mappingsData)
       });
 
+      console.log("Debug: Mappings API response status:", mappingsResponse.status);
+
+      if (!mappingsResponse.ok) {
+        const errorData = await mappingsResponse.json();
+        console.error("Debug: Mappings API error:", errorData);
+        throw new Error(errorData.detail || "Failed to save mappings");
+      }
+
+      // Prepare FOV data for each zone
+      console.log("Debug: Preparing FOV data for each zone");
+      for (const mapping of completedMappings) {
+        const fovData = {
+          camera_id: selectedCamera.id,
+          zone: {
+            name: mapping.zone_name,
+            points: mapping.zone_points.map(p => [p.x, p.y] as [number, number])
+          }
+        };
+
+        console.log("Debug: FOV data to be sent for zone:", mapping.zone_name, fovData);
+
+        // Make FOV API call for each zone
+        console.log("Debug: Making FOV API call for zone:", mapping.zone_name);
+        const fovResponse = await fetch("http://localhost:8000/fov/update-zone", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token.trim()}`
+          },
+          body: JSON.stringify(fovData)
+        });
+
+        console.log("Debug: FOV API response status for zone:", mapping.zone_name, fovResponse.status);
+
+        if (!fovResponse.ok) {
+          const errorData = await fovResponse.json();
+          console.error("Debug: FOV API error for zone:", mapping.zone_name, errorData);
+          throw new Error(errorData.detail || `Failed to save FOV for zone ${mapping.zone_name}`);
+        }
+      }
+
+      console.log("Debug: All API calls successful");
       toast({
         title: "Success",
-        description: "Homography mappings saved successfully"
+        description: "Homography mappings and FOV saved successfully"
       });
 
       // Update local state with the response
       setMappingObjects([]);
       setCurrentZonePoints([]);
-      setSelectedCamera(updatedCamera as Camera | null);
+      setSelectedCamera(prev => prev ? { ...prev, has_mapping: true } : null);
 
     } catch (error) {
-      console.error('Error saving homography mappings:', error);
+      console.error('Debug: Error in save process:', error);
       toast({
         title: "Error",
-        description: "Failed to save homography mappings",
+        description: error instanceof Error ? error.message : "Failed to save homography mappings",
         variant: "destructive"
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -528,62 +789,6 @@ export default function HomographyMappingPage() {
   const showTemporaryError = (message: string) => {
     setTempError(message)
     setTimeout(() => setTempError(null), 2000) // Clear error after 2 seconds
-  }
-
-  // Modify handleImageClick for object mapping
-  const handleImageClick = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
-    if (!isSelecting && !isMappingMode) return
-    if (isMappingMode && type !== selectionSequence) return
-
-    const img = event.currentTarget
-    const rect = img.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
-
-    if (isMappingMode && selectedObject) {
-      const currentZone = zones.find(zone => selectedObject.name.startsWith(zone.name))
-      if (!currentZone) return
-
-      if (type === "camera" && selectedObject.src_points.length < 4) {
-        const newSrcPoints = [...selectedObject.src_points, { x, y, id: selectedObject.src_points.length + 1 }]
-        setSelectedObject(prev => ({
-          ...prev!,
-          src_points: newSrcPoints
-        }))
-
-        if (newSrcPoints.length === 4) {
-          setSelectionSequence("map")
-          toast({
-            title: "Camera points complete",
-            description: "Now select corresponding points on the map view",
-          })
-        }
-      } else if (type === "map" && selectedObject.dst_points.length < 4) {
-        // Only show error if point is outside zone
-        if (!isPointInsideZone({ x, y }, currentZone)) {
-          showTemporaryError("You are out of zone. Please select the object inside the zone.")
-          return
-        }
-
-        const newDstPoints = [...selectedObject.dst_points, { x, y, id: selectedObject.dst_points.length + 1 }]
-        setSelectedObject(prev => ({
-          ...prev!,
-          dst_points: newDstPoints
-        }))
-
-        if (newDstPoints.length === 4) {
-          setMappingObjects(prev =>
-            prev.map(obj =>
-              obj.name === selectedObject.name ? selectedObject : obj
-            )
-          )
-          setSelectedObject(null)
-          setIsMappingMode(false)
-          setSelectionSequence("camera")
-          setShowMappingPrompt(true)
-        }
-      }
-    }
   }
 
   // Modify handleObjectSelect
@@ -722,6 +927,523 @@ export default function HomographyMappingPage() {
     }
   }
 
+  // Add function to edit mapping
+  const editMapping = (mapping: MappingObject) => {
+    setSelectedObject(mapping);
+    setIsMappingMode(true);
+    setSelectionSequence("map"); // Start with map points since camera points are complete
+    setCurrentStep(4);
+  };
+
+  // Add new function to handle homography testing
+  const handleTestHomography = async () => {
+    if (!selectedCamera || !cameraFrame) return;
+
+    try {
+      setIsTesting(true);
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+
+      // First, detect objects in the camera frame
+      const detectResponse = await fetch("http://localhost:8000/homography/detect-objects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify({
+          camera_id: selectedCamera.id,
+          frame_url: cameraFrame
+        })
+      });
+
+      if (!detectResponse.ok) {
+        throw new Error("Failed to detect objects");
+      }
+
+      const detectedPoints = await detectResponse.json();
+      setTestPoints(detectedPoints);
+
+      // Then, transform the points using homography
+      const transformResponse = await fetch("http://localhost:8000/homography/transform-points", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify({
+          camera_id: selectedCamera.id,
+          points: detectedPoints
+        })
+      });
+
+      if (!transformResponse.ok) {
+        throw new Error("Failed to transform points");
+      }
+
+      const transformedPoints = await transformResponse.json();
+      setGeneratedMapPoints(transformedPoints);
+
+      toast({
+        title: "Success",
+        description: "Successfully generated map points",
+      });
+    } catch (error) {
+      console.error("Error testing homography:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to test homography mapping",
+        variant: "destructive"
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  // Add this useEffect to fetch zones data
+  useEffect(() => {
+    const fetchZonesData = async () => {
+      if (!selectedCamera) return;
+
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          throw new Error("No authentication token found");
+        }
+
+        const response = await fetch(
+          `http://localhost:8000/${selectedCamera.id}`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => null);
+          throw new Error(errorData?.detail || "Failed to fetch camera data");
+        }
+
+        const data = await response.json();
+        // Extract zones from camera's homography map
+        const zones = data.homography_map?.zones || [];
+        setZonesData(zones);
+      } catch (error) {
+        console.error("Error fetching camera data:", error);
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to fetch camera data",
+          variant: "destructive"
+        });
+      }
+    };
+
+    fetchZonesData();
+  }, [selectedCamera, toast]);
+
+  // Add function to delete zone
+  const handleDeleteZone = async (zoneName: string) => {
+    if (!selectedCamera) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No authentication token found");
+
+      const response = await fetch(
+        `http://localhost:8000/fov/delete-zone/${selectedCamera.id}/${zoneName}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to delete zone");
+      }
+
+      // Refresh zones data
+      const updatedResponse = await fetch(
+        `http://localhost:8000/${selectedCamera.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+      const updatedData = await updatedResponse.json();
+      setZonesData(updatedData.homography_map?.zones || []);
+
+      toast({
+        title: "Success",
+        description: "Zone deleted successfully"
+      });
+    } catch (error) {
+      console.error("Error deleting zone:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete zone",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Add function to delete object
+  const handleDeleteObject = async (zoneName: string, objectName: string) => {
+    if (!selectedCamera) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No authentication token found");
+
+      // Get current camera data
+      const cameraResponse = await fetch(
+        `http://localhost:8000/${selectedCamera.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!cameraResponse.ok) {
+        throw new Error("Failed to fetch camera data");
+      }
+
+      const cameraData = await cameraResponse.json();
+      const zones = cameraData.homography_map?.zones || [];
+
+      // Find and update the zone
+      const updatedZones = zones.map((zone: any) => {
+        if (zone.name === zoneName) {
+          return {
+            ...zone,
+            objects: zone.objects.filter((obj: any) => obj.name !== objectName)
+          };
+        }
+        return zone;
+      });
+
+      // Update camera with new zones
+      const updateResponse = await fetch(
+        `http://localhost:8000/${selectedCamera.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            homography_map: {
+              zones: updatedZones
+            }
+          })
+        }
+      );
+
+      if (!updateResponse.ok) {
+        throw new Error("Failed to update camera data");
+      }
+
+      // Refresh zones data
+      const updatedData = await updateResponse.json();
+      setZonesData(updatedData.homography_map?.zones || []);
+
+      toast({
+        title: "Success",
+        description: "Object deleted successfully"
+      });
+    } catch (error) {
+      console.error("Error deleting object:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete object",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Add function to update zone
+  const handleUpdateZone = async (zoneName: string, newPoints: Point[]) => {
+    if (!selectedCamera) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No authentication token found");
+
+      // Get current camera data
+      const cameraResponse = await fetch(
+        `http://localhost:8000/${selectedCamera.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!cameraResponse.ok) {
+        throw new Error("Failed to fetch camera data");
+      }
+
+      const cameraData = await cameraResponse.json();
+      const zones = cameraData.homography_map?.zones || [];
+
+      // Find and update the zone
+      const updatedZones = zones.map((zone: any) => {
+        if (zone.name === zoneName) {
+          return {
+            ...zone,
+            points: newPoints
+          };
+        }
+        return zone;
+      });
+
+      // Update camera with new zones
+      const updateResponse = await fetch(
+        `http://localhost:8000/${selectedCamera.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            homography_map: {
+              zones: updatedZones
+            }
+          })
+        }
+      );
+
+      if (!updateResponse.ok) {
+        throw new Error("Failed to update camera data");
+      }
+
+      // Refresh zones data
+      const updatedData = await updateResponse.json();
+      setZonesData(updatedData.homography_map?.zones || []);
+
+      toast({
+        title: "Success",
+        description: "Zone updated successfully"
+      });
+    } catch (error) {
+      console.error("Error updating zone:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update zone",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Add function to update object
+  const handleUpdateObject = async (zoneName: string, objectName: string, newSrcPoints: Point[], newDstPoints: Point[]) => {
+    if (!selectedCamera) return;
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No authentication token found");
+
+      // Get current camera data
+      const cameraResponse = await fetch(
+        `http://localhost:8000/${selectedCamera.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!cameraResponse.ok) {
+        throw new Error("Failed to fetch camera data");
+      }
+
+      const cameraData = await cameraResponse.json();
+      const zones = cameraData.homography_map?.zones || [];
+
+      // Find and update the object
+      const updatedZones = zones.map((zone: any) => {
+        if (zone.name === zoneName) {
+          return {
+            ...zone,
+            objects: zone.objects.map((obj: any) => {
+              if (obj.name === objectName) {
+                return {
+                  ...obj,
+                  src_points: newSrcPoints,
+                  dst_points: newDstPoints
+                };
+              }
+              return obj;
+            })
+          };
+        }
+        return zone;
+      });
+
+      // Update camera with new zones
+      const updateResponse = await fetch(
+        `http://localhost:8000/${selectedCamera.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            homography_map: {
+              zones: updatedZones
+            }
+          })
+        }
+      );
+
+      if (!updateResponse.ok) {
+        throw new Error("Failed to update camera data");
+      }
+
+      // Refresh zones data
+      const updatedData = await updateResponse.json();
+      setZonesData(updatedData.homography_map?.zones || []);
+
+      toast({
+        title: "Success",
+        description: "Object updated successfully"
+      });
+    } catch (error) {
+      console.error("Error updating object:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update object",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Update the zones tab content to use the new functions
+  const renderZonesTab = () => (
+    <TabsContent value="zones" className="space-y-4">
+      {zonesData.length > 0 ? (
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Defined Zones</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {zonesData.map((zone, index) => (
+              <Card key={index}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{zone.name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    {zone.points.length} points mapped
+                  </p>
+                  {zone.objects.length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-sm font-medium">Mapped Objects:</p>
+                      <div className="space-y-1">
+                        {zone.objects.map((obj, objIndex) => (
+                          <div
+                            key={objIndex}
+                            className="flex items-center justify-between p-2 rounded-md hover:bg-muted"
+                          >
+                            <div>
+                              <p className="text-sm font-medium">{obj.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Camera points: {obj.src_points.length}/4
+                                <br />
+                                Map points: {obj.dst_points.length}/4
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setSelectedObject({
+                                    name: obj.name,
+                                    src_points: obj.src_points,
+                                    dst_points: obj.dst_points,
+                                    zone_name: zone.name,
+                                    zone_points: zone.points,
+                                    object_name: obj.name.split('_')[1]
+                                  });
+                                  setIsMappingMode(true);
+                                  setSelectionSequence("camera");
+                                  setCurrentStep(4);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteObject(zone.name, obj.name)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+                <CardFooter className="flex justify-end gap-2 pt-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCurrentZone({
+                        name: zone.name,
+                        points: zone.points,
+                        x: 0,
+                        y: 0
+                      });
+                      setCurrentStep(2);
+                    }}
+                  >
+                    Edit Zone
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={() => handleDeleteZone(zone.name)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+
+          <Button onClick={() => setCurrentStep(1)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add New Zone
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center py-8">
+          <Map className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium">No Zones Defined</h3>
+          <p className="text-muted-foreground mb-4">
+            Create zones to map areas between your mall map and camera views
+          </p>
+          <Button onClick={() => setCurrentStep(1)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Zone
+          </Button>
+        </div>
+      )}
+    </TabsContent>
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -819,6 +1541,7 @@ export default function HomographyMappingPage() {
                 <TabsList>
                   <TabsTrigger value="mapping">Mapping Interface</TabsTrigger>
                   <TabsTrigger value="zones">Zones & Objects</TabsTrigger>
+                  <TabsTrigger value="testing">Testing</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="mapping" className="space-y-4">
@@ -1178,106 +1901,132 @@ export default function HomographyMappingPage() {
                   )}
                 </TabsContent>
 
-                <TabsContent value="zones" className="space-y-4">
-                  {zones.length > 0 ? (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-medium">Defined Zones</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {zones.map((zone, index) => (
-                          <Card key={index}>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">{zone.name}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <p className="text-sm text-muted-foreground">{zone.points.length} points mapped</p>
-                              {mappingObjects.filter(obj => obj.name.startsWith(zone.name)).length > 0 && (
-                                <div className="mt-2 space-y-2">
-                                  <p className="text-sm font-medium">Mapped Objects:</p>
-                                  <div className="space-y-1">
-                                    {mappingObjects
-                                      .filter(obj => obj.name.startsWith(zone.name))
-                                      .map((obj, objIndex) => (
-                                        <div
-                                          key={objIndex}
-                                          className={`flex items-center justify-between p-2 rounded-md cursor-pointer ${selectedObject?.name === obj.name
-                                            ? 'bg-primary/10'
-                                            : 'hover:bg-muted'
-                                            }`}
-                                          onClick={() => handleObjectSelect(obj)}
-                                        >
-                                          <div>
-                                            <p className="text-sm font-medium">{obj.name}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                              {obj.src_points.length}/4 points mapped
-                                            </p>
-                                          </div>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={(e) => {
-                                              e.stopPropagation()
-                                              setMappingObjects(prev =>
-                                                prev.filter((_, i) => i !== objIndex)
-                                              )
-                                            }}
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </div>
-                              )}
-                            </CardContent>
-                            <CardFooter className="flex justify-end gap-2 pt-0">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setCurrentStep(4)
-                                  setSelectedObject(null)
-                                  setIsMappingMode(false)
-                                }}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-destructive"
-                                onClick={() => {
-                                  setZones(zones.filter((_, i) => i !== index))
-                                  // Also remove associated objects
-                                  setMappingObjects(prev =>
-                                    prev.filter(obj => !obj.name.startsWith(zone.name))
-                                  )
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </CardFooter>
-                          </Card>
-                        ))}
-                      </div>
+                {renderZonesTab()}
 
-                      <Button onClick={() => setCurrentStep(1)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add New Zone
-                      </Button>
+                <TabsContent value="testing" className="space-y-4">
+                  <div className="grid grid-cols-1 gap-6">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-medium">Camera View</h3>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            if (!selectedCamera) return;
+                            try {
+                              setIsTesting(true);
+                              const token = localStorage.getItem("token");
+                              if (!token) throw new Error("No authentication token found");
+
+                              // First get the camera frame
+                              const rtspUrl = `rtsp://${selectedCamera.username}:${selectedCamera.password}@${selectedCamera.ip_address}:554/cam/realmonitor?channel=1&subtype=0`;
+                              const frameResponse = await fetch("http://localhost:8000/camera/frame", {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  "Authorization": `Bearer ${token}`
+                                },
+                                body: JSON.stringify({ rtsp_url: rtspUrl })
+                              });
+
+                              if (!frameResponse.ok) {
+                                throw new Error("Failed to get camera frame");
+                              }
+
+                              const frameBlob = await frameResponse.blob();
+                              const frameFile = new File([frameBlob], "frame.jpg", { type: "image/jpeg" });
+
+                              // Create form data for the test mapping request
+                              const formData = new FormData();
+                              formData.append("frame", frameFile);
+
+                              // Send the frame for test mapping
+                              const testResponse = await fetch(
+                                `http://localhost:8000/homography/test-mapping?camera_id=${selectedCamera.id}`,
+                                {
+                                  method: "POST",
+                                  headers: {
+                                    "Authorization": `Bearer ${token}`
+                                  },
+                                  body: formData
+                                }
+                              );
+
+                              if (!testResponse.ok) {
+                                throw new Error("Failed to process test mapping");
+                              }
+
+                              const processedFrameBlob = await testResponse.blob();
+                              const processedFrameUrl = URL.createObjectURL(processedFrameBlob);
+                              setCameraFrame(processedFrameUrl);
+
+                              toast({
+                                title: "Success",
+                                description: "Test mapping completed successfully"
+                              });
+                            } catch (error) {
+                              console.error("Error in test mapping:", error);
+                              toast({
+                                title: "Error",
+                                description: error instanceof Error ? error.message : "Failed to process test mapping",
+                                variant: "destructive"
+                              });
+                            } finally {
+                              setIsTesting(false);
+                            }
+                          }}
+                          disabled={!selectedCamera || isTesting}
+                        >
+                          {isTesting ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Testing...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-4 w-4 mr-2" />
+                              Test Mapping
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <div className="relative w-full h-[500px] bg-muted rounded-md overflow-hidden">
+                        {captureError ? (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                            <AlertCircle className="h-8 w-8 text-destructive mb-2" />
+                            <p className="text-destructive font-medium">Failed to capture frame</p>
+                            <p className="text-sm text-muted-foreground">{captureError}</p>
+                          </div>
+                        ) : cameraFrame ? (
+                          <div className="relative w-full h-full">
+                            <img
+                              src={cameraFrame}
+                              alt="Camera view"
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <p className="text-muted-foreground">No camera frame available</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8">
-                      <Map className="h-12 w-12 text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-medium">No Zones Defined</h3>
-                      <p className="text-muted-foreground mb-4">
-                        Create zones to map areas between your mall map and camera views
-                      </p>
-                      <Button onClick={() => setCurrentStep(1)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Zone
-                      </Button>
-                    </div>
-                  )}
+                  </div>
+
+                  <div className="bg-muted/50 p-4 rounded-md">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Instructions:</strong>
+                      <br />
+                      1. Select a camera from the dropdown above
+                      <br />
+                      2. Click "Test Mapping" to process the camera frame
+                      <br />
+                      3. The system will use the saved homography mappings to overlay the mall map on the camera view
+                      <br />
+                      4. The processed frame will show the mapped zones and objects
+                    </p>
+                  </div>
                 </TabsContent>
               </Tabs>
             </CardContent>
