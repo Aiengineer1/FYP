@@ -77,13 +77,20 @@ export default function LoginPage() {
         }
       }
 
+      // Log the token before storing
+      console.log("Access token from response:", data.access_token)
+
       // Store user data and token in localStorage
-      localStorage.setItem("token", data.token)
+      localStorage.setItem("token", data.access_token)
       localStorage.setItem("user_id", data.user_id)
       localStorage.setItem("user", JSON.stringify(data))
 
+      // Verify token was stored
+      const storedToken = localStorage.getItem("token")
+      console.log("Token stored in localStorage:", storedToken)
+
       // Set cookies with proper attributes
-      document.cookie = `token=${data.token}; path=/; max-age=86400; SameSite=Lax`
+      document.cookie = `token=${data.access_token}; path=/; max-age=86400; SameSite=Lax`
       document.cookie = `user=${JSON.stringify(data)}; path=/; max-age=86400; SameSite=Lax`
 
       toast({

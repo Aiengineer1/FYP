@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { BarChart, LineChart, Activity, Users, Camera, Filter } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,6 +12,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { CameraStream } from "@/components/camera-stream"
+import { useToast } from "@/hooks/use-toast"
 
 // Mock data for charts
 const stayTimeData = [
@@ -20,18 +23,6 @@ const stayTimeData = [
   { rack: "Rack 4", male: 60, female: 50 },
   { rack: "Rack 5", male: 25, female: 30 },
   { rack: "Rack 6", male: 40, female: 60 },
-]
-
-// Mock cameras data
-const cameras = [
-  { id: 1, name: "Entrance North", location: "North Entrance", status: "Active" },
-  { id: 2, name: "Food Court", location: "Level 2", status: "Active" },
-  { id: 3, name: "Main Hallway", location: "Level 1", status: "Active" },
-  { id: 4, name: "Parking A", location: "Basement", status: "Active" },
-  { id: 5, name: "Electronics Section", location: "Level 3", status: "Active" },
-  { id: 6, name: "Kids Zone", location: "Level 2", status: "Active" },
-  { id: 7, name: "Clothing Department", location: "Level 1", status: "Active" },
-  { id: 8, name: "Entrance South", location: "South Entrance", status: "Inactive" },
 ]
 
 // Mock rack data
@@ -45,15 +36,86 @@ const racks = [
 ]
 
 export default function AnalyticsPage() {
+  const router = useRouter()
+  const { toast } = useToast()
   const [shelfInsightTab, setShelfInsightTab] = useState<string>("overall")
   const [customerInsightTab, setCustomerInsightTab] = useState<string>("route")
   const [cameraTab, setCameraTab] = useState<string>("all")
+  const [cameras, setCameras] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   // Filters
   const [rackFilter, setRackFilter] = useState<string>("all")
   const [genderFilter, setGenderFilter] = useState<string>("all")
   const [ageGroupFilter, setAgeGroupFilter] = useState<string>("all")
   const [cameraFilter, setCameraFilter] = useState<string>("all")
+
+  // Fetch cameras data
+  useEffect(() => {
+    const fetchCameras = async () => {
+      try {
+        const token = localStorage.getItem("token")
+        if (!token) {
+          throw new Error("No authentication token found")
+        }
+
+        const userData = localStorage.getItem("user")
+        if (!userData) {
+          throw new Error("No user data found")
+        }
+
+        const user = JSON.parse(userData)
+        console.log("Fetching cameras for mall:", user.mall_id)
+
+        const response = await fetch(`http://localhost:8000/mall/${user.mall_id}/cameras`, {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch cameras")
+        }
+
+        const camerasData = await response.json()
+        console.log("Fetched cameras data:", camerasData)
+
+        // Add status field if not present
+        const camerasWithStatus = camerasData.map((camera: any) => ({
+          ...camera,
+          status: "Active" // Set all cameras as active by default
+        }))
+
+        setCameras(camerasWithStatus)
+      } catch (error) {
+        console.error("Error fetching cameras:", error)
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to fetch cameras",
+          variant: "destructive"
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchCameras()
+  }, [toast])
+
+  // Add debug log for cameras state
+  useEffect(() => {
+    console.log("Current cameras state:", cameras)
+  }, [cameras])
+
+  if (isLoading) {
+    return (
+      <AuthenticatedLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      </AuthenticatedLayout>
+    )
+  }
 
   return (
     <AuthenticatedLayout>
@@ -559,30 +621,18 @@ export default function AnalyticsPage() {
                 {cameraTab === "all" ? (
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {cameras
-                        .filter((camera) => camera.status === "Active")
-                        .map((camera) => (
-                          <Card key={camera.id}>
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">{camera.name}</CardTitle>
-                              <CardDescription>{camera.location}</CardDescription>
-                            </CardHeader>
-                            <CardContent className="p-0">
-                              <div className="aspect-video bg-muted relative">
-                                <img
-                                  src="/placeholder.svg?height=720&width=1280"
-                                  alt={`${camera.name} stream`}
-                                  className="w-full h-full object-cover"
-                                />
-                                <div className="absolute top-2 right-2">
-                                  <Badge variant="outline" className="bg-green-50 text-green-700">
-                                    Live
-                                  </Badge>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                      {cameras && cameras.length > 0 ? (
+                        cameras.map((camera) => {
+                          console.log("Rendering camera:", camera)
+                          return (
+                            <CameraStream key={camera.id} camera={camera} />
+                          )
+                        })
+                      ) : (
+                        <div className="col-span-full text-center py-8">
+                          <p className="text-muted-foreground">No cameras found</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -596,52 +646,35 @@ export default function AnalyticsPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All Cameras</SelectItem>
-                            {cameras
-                              .filter((camera) => camera.status === "Active")
-                              .map((camera) => (
+                            {cameras && cameras.length > 0 ? (
+                              cameras.map((camera) => (
                                 <SelectItem key={camera.id} value={camera.id.toString()}>
                                   {camera.name} ({camera.location})
                                 </SelectItem>
-                              ))}
+                              ))
+                            ) : (
+                              <SelectItem value="none" disabled>No cameras available</SelectItem>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>
                     </div>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">
-                          {cameraFilter === "all"
-                            ? "Select a specific camera to view"
-                            : `${cameras.find((c) => c.id.toString() === cameraFilter)?.name} Stream`}
-                        </CardTitle>
-                        {cameraFilter !== "all" && (
-                          <CardDescription>
-                            {cameras.find((c) => c.id.toString() === cameraFilter)?.location}
-                          </CardDescription>
-                        )}
-                      </CardHeader>
-                      <CardContent className="p-0">
-                        {cameraFilter === "all" ? (
-                          <div className="h-96 flex items-center justify-center bg-muted">
-                            <p className="text-muted-foreground">Please select a specific camera to view its stream</p>
-                          </div>
-                        ) : (
-                          <div className="aspect-video bg-muted relative">
-                            <img
-                              src="/placeholder.svg?height=720&width=1280"
-                              alt={`Camera ${cameraFilter} stream`}
-                              className="w-full h-full object-cover"
-                            />
-                            <div className="absolute top-4 right-4">
-                              <Badge variant="outline" className="bg-green-50 text-green-700">
-                                Live
-                              </Badge>
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                    {cameraFilter === "all" ? (
+                      <div className="h-96 flex items-center justify-center bg-muted">
+                        <p className="text-muted-foreground">Please select a specific camera to view its stream</p>
+                      </div>
+                    ) : (
+                      cameras && cameras.length > 0 ? (
+                        <CameraStream
+                          camera={cameras.find((c) => c.id.toString() === cameraFilter)!}
+                        />
+                      ) : (
+                        <div className="h-96 flex items-center justify-center bg-muted">
+                          <p className="text-muted-foreground">No cameras available</p>
+                        </div>
+                      )
+                    )}
                   </div>
                 )}
               </CardContent>
