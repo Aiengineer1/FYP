@@ -20,6 +20,10 @@ class TokenData(BaseModel):
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
+    
+    if "email" in data:
+        to_encode["sub"] = data["email"]
+    
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -39,7 +43,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         if token.startswith("Bearer "):
             token = token[7:]
             
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token,  SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception

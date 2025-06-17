@@ -4,7 +4,13 @@ from starlette.responses import Response
 from ..schemas.mall import MallCreate, MallResponse, MallResponseWithImage
 from ..crud import create_mall, get_mall, update_mall, delete_mall, get_user, update_user
 from ..database import get_db
+from ..dependencies import get_current_user
 from typing import Optional
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/mall",
@@ -17,7 +23,8 @@ async def create_new_mall(
     address: str,
     user_id: int,
     map_image: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     try:
         # Check if user exists
@@ -55,114 +62,139 @@ async def create_new_mall(
         # Update user with new mall_id
         update_user(db=db, user_id=user_id, user_data={"mall_id": new_mall.id})
         
-        # Return mall without image data
-        return MallResponse(
-            id=new_mall.id,
-            name=new_mall.name,
-            address=new_mall.address,
-            created_at=new_mall.created_at
-        )
+        return new_mall
         
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Error creating mall: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error creating mall: {str(e)}")
+        logger.error(f"Error creating mall: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{mall_id}", response_model=MallResponse)
-def read_mall(mall_id: int, db: Session = Depends(get_db)):
-    db_mall = get_mall(db, mall_id)
-    if db_mall is None:
-        raise HTTPException(status_code=404, detail="Mall not found")
-    return MallResponse(
-        id=db_mall.id,
-        name=db_mall.name,
-        address=db_mall.address,
-        created_at=db_mall.created_at
-    )
+def read_mall(
+    mall_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        db_mall = get_mall(db, mall_id)
+        if db_mall is None:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        return db_mall
+    except Exception as e:
+        logger.error(f"Error fetching mall: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{mall_id}/image")
-async def get_mall_image(mall_id: int, db: Session = Depends(get_db)):
-    db_mall = get_mall(db, mall_id)
-    if db_mall is None:
-        raise HTTPException(status_code=404, detail="Mall not found")
-    if not db_mall.map_image:
-        raise HTTPException(status_code=404, detail="Mall map image not found")
-    return Response(content=db_mall.map_image, media_type="image/jpeg")
+async def get_mall_image(
+    mall_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        db_mall = get_mall(db, mall_id)
+        if db_mall is None:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        if not db_mall.map_image:
+            raise HTTPException(status_code=404, detail="Mall map image not found")
+        return Response(content=db_mall.map_image, media_type="image/jpeg")
+    except Exception as e:
+        logger.error(f"Error fetching mall image: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{mall_id}", response_model=MallResponse)
 async def update_mall_route(
     mall_id: int,
     name: Optional[str] = None,
     address: Optional[str] = None,
+    contact_email: Optional[str] = None,
+    contact_number: Optional[str] = None,
     map_image: UploadFile = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
-    # Get existing mall
-    db_mall = get_mall(db, mall_id)
-    if db_mall is None:
-        raise HTTPException(status_code=404, detail="Mall not found")
-    
-    # Prepare update data
-    update_data = {}
-    if name is not None:
-        update_data["name"] = name
-    if address is not None:
-        update_data["address"] = address
-    if map_image:
-        map_image_data = await map_image.read()
-        if map_image_data:
-            update_data["map_image"] = map_image_data
-    
-    updated_mall = update_mall(db, mall_id, update_data)
-    return MallResponse(
-        id=updated_mall.id,
-        name=updated_mall.name,
-        address=updated_mall.address,
-        created_at=updated_mall.created_at
-    )
+    try:
+        # Get existing mall
+        db_mall = get_mall(db, mall_id)
+        if db_mall is None:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        # Prepare update data
+        update_data = {}
+        if name is not None:
+            update_data["name"] = name
+        if address is not None:
+            update_data["address"] = address
+        if contact_email is not None:
+            update_data["contact_email"] = contact_email
+        if contact_number is not None:
+            update_data["contact_number"] = contact_number
+        if map_image:
+            map_image_data = await map_image.read()
+            if map_image_data:
+                update_data["map_image"] = map_image_data
+        
+        updated_mall = update_mall(db, mall_id, update_data)
+        return updated_mall
+    except Exception as e:
+        logger.error(f"Error updating mall: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{mall_id}")
-def delete_mall_route(mall_id: int, db: Session = Depends(get_db)):
-    mall = get_mall(db, mall_id)
-    if mall is None:
-        raise HTTPException(status_code=404, detail="Mall not found")
-    delete_mall(db, mall_id)
-    return {"detail": "Mall deleted"}
+def delete_mall_route(
+    mall_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        mall = get_mall(db, mall_id)
+        if mall is None:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        delete_mall(db, mall_id)
+        return {"detail": "Mall deleted"}
+    except Exception as e:
+        logger.error(f"Error deleting mall: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{mall_id}/setup", response_model=MallResponse)
 async def setup_mall(
     mall_id: int,
     name: Optional[str] = None,
     address: Optional[str] = None,
+    contact_email: Optional[str] = None,
+    contact_number: Optional[str] = None,
     map_image: UploadFile = File(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Setup or configure a mall with initial settings.
     This endpoint allows updating basic mall information and map.
     """
-    # Get existing mall
-    db_mall = get_mall(db, mall_id)
-    if db_mall is None:
-        raise HTTPException(status_code=404, detail="Mall not found")
-    
-    # Prepare setup data
-    setup_data = {}
-    if name is not None:
-        setup_data["name"] = name
-    if address is not None:
-        setup_data["address"] = address
-    if map_image:
-        map_image_data = await map_image.read()
-        if map_image_data:
-            setup_data["map_image"] = map_image_data
-    
-    # Update mall with setup data
-    updated_mall = update_mall(db, mall_id, setup_data)
-    return MallResponse(
-        id=updated_mall.id,
-        name=updated_mall.name,
-        address=updated_mall.address,
-        created_at=updated_mall.created_at
-    )
+    try:
+        # Get existing mall
+        db_mall = get_mall(db, mall_id)
+        if db_mall is None:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        # Prepare setup data
+        setup_data = {}
+        if name is not None:
+            setup_data["name"] = name
+        if address is not None:
+            setup_data["address"] = address
+        if contact_email is not None:
+            setup_data["contact_email"] = contact_email
+        if contact_number is not None:
+            setup_data["contact_number"] = contact_number
+        if map_image:
+            map_image_data = await map_image.read()
+            if map_image_data:
+                setup_data["map_image"] = map_image_data
+        
+        # Update mall with setup data
+        updated_mall = update_mall(db, mall_id, setup_data)
+        return updated_mall
+    except Exception as e:
+        logger.error(f"Error setting up mall: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
