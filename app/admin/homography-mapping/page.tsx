@@ -31,6 +31,15 @@ interface MappingObject {
   object_name: string
 }
 
+interface ProcessedMapping {
+  name: string;
+  zone_name: string;
+  object_name: string;
+  src_points: number[][];
+  dst_points: number[][];
+  zone_points: Point[];
+}
+
 export default function HomographyMappingPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -89,6 +98,8 @@ export default function HomographyMappingPage() {
       dst_points: Point[];
     }>;
   }>>([]);
+  const [mallMapNaturalWidth, setMallMapNaturalWidth] = useState<number | null>(null);
+  const [mallMapNaturalHeight, setMallMapNaturalHeight] = useState<number | null>(null);
 
   // Fetch cameras and mall map when component mounts
   useEffect(() => {
@@ -317,37 +328,47 @@ export default function HomographyMappingPage() {
     setCurrentStep(2) // Move to zone mapping step
   }
 
-  // Modify handleZonePointMapping
+  // Update handleZonePointMapping for accurate click mapping on mall map
   const handleZonePointMapping = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
-    if (!currentZone || currentStep !== 2 || type !== zoneMappingMode) return
-    // Prevent point selection if prompt is shown
-    if (type === "camera" && showPointPrompt) return
-    // Prevent selecting more points on map than camera
-    if (type === "map" && mapZonePoints.length >= cameraZonePoints.length) return
+    if (!currentZone || currentStep !== 2 || type !== zoneMappingMode) return;
+    if (type === "camera" && showPointPrompt) return;
+    if (type === "map" && mapZonePoints.length >= cameraZonePoints.length) return;
 
-    const img = event.currentTarget
-    const rect = img.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
+    const img = event.currentTarget;
+    const rect = img.getBoundingClientRect();
+    let x = event.clientX - rect.left;
+    let y = event.clientY - rect.top;
+
+    if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
+      // Accurate mapping for object-contain images
+      const scale = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+      const displayWidth = mallMapNaturalWidth * scale;
+      const displayHeight = mallMapNaturalHeight * scale;
+      const offsetX = (rect.width - displayWidth) / 2;
+      const offsetY = (rect.height - displayHeight) / 2;
+      x = (event.clientX - rect.left - offsetX) / scale;
+      y = (event.clientY - rect.top - offsetY) / scale;
+      // Clamp to image bounds
+      x = Math.max(0, Math.min(mallMapNaturalWidth, x));
+      y = Math.max(0, Math.min(mallMapNaturalHeight, y));
+      x = Math.round(x);
+      y = Math.round(y);
+    }
 
     if (type === "camera") {
-      const newPoints = [...cameraZonePoints, { x, y }]
-      setCameraZonePoints(newPoints)
-
-      // Check if we've reached 5 points
+      const newPoints = [...cameraZonePoints, { x, y }];
+      setCameraZonePoints(newPoints);
       if (newPoints.length === 5) {
-        setShowPointPrompt(true)
+        setShowPointPrompt(true);
       }
-
-      // Check if we've reached the total points (5 + additional)
       if (additionalPoints > 0 && newPoints.length === 5 + additionalPoints) {
-        setZoneMappingMode("map")
-        setShowPointPrompt(false)
+        setZoneMappingMode("map");
+        setShowPointPrompt(false);
       }
     } else {
-      setMapZonePoints(prev => [...prev, { x, y }])
+      setMapZonePoints(prev => [...prev, { x, y }]);
     }
-  }
+  };
 
   // Add function to complete zone mapping
   const handleCompleteZoneMapping = () => {
@@ -424,15 +445,31 @@ export default function HomographyMappingPage() {
     setCurrentStep(4)
   }
 
-  // Modify handleImageClick for object mapping
+  // Update handleImageClick for object mapping (map side)
   const handleImageClick = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
     if (!isSelecting && !isMappingMode) return;
     if (isMappingMode && type !== selectionSequence) return;
 
     const img = event.currentTarget;
     const rect = img.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    let x = event.clientX - rect.left;
+    let y = event.clientY - rect.top;
+
+    if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
+      // Accurate mapping for object-contain images
+      const scale = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+      const displayWidth = mallMapNaturalWidth * scale;
+      const displayHeight = mallMapNaturalHeight * scale;
+      const offsetX = (rect.width - displayWidth) / 2;
+      const offsetY = (rect.height - displayHeight) / 2;
+      x = (event.clientX - rect.left - offsetX) / scale;
+      y = (event.clientY - rect.top - offsetY) / scale;
+      // Clamp to image bounds
+      x = Math.max(0, Math.min(mallMapNaturalWidth, x));
+      y = Math.max(0, Math.min(mallMapNaturalHeight, y));
+      x = Math.round(x);
+      y = Math.round(y);
+    }
 
     if (isMappingMode && selectedObject) {
       const currentZone = zones.find(zone => selectedObject.name.startsWith(zone.name));
@@ -444,7 +481,6 @@ export default function HomographyMappingPage() {
           ...prev!,
           src_points: newSrcPoints
         }));
-
         if (newSrcPoints.length === 4) {
           setSelectionSequence("map");
           toast({
@@ -453,38 +489,22 @@ export default function HomographyMappingPage() {
           });
         }
       } else if (type === "map" && selectedObject.dst_points.length < 4) {
-        // Only show error if point is outside zone
         if (!isPointInsideZone({ x, y }, currentZone)) {
           showTemporaryError("You are out of zone. Please select the object inside the zone.");
           return;
         }
-
         const newDstPoints = [...selectedObject.dst_points, { x, y, id: selectedObject.dst_points.length + 1 }];
-
-        // Update the selected object with new points
         const updatedObject = {
           ...selectedObject,
           dst_points: newDstPoints
         };
-
         setSelectedObject(updatedObject);
-
-        // Update the mapping objects array immediately
         setMappingObjects(prev =>
           prev.map(obj =>
             obj.name === selectedObject.name ? updatedObject : obj
           )
         );
-
-        // Add validation for the last point
         if (newDstPoints.length === 4) {
-          console.log("Debug: Map points complete:", {
-            object: selectedObject.name,
-            points: newDstPoints,
-            count: newDstPoints.length
-          });
-
-          // Validate that all points are selected
           if (updatedObject.src_points.length === 4 && updatedObject.dst_points.length === 4) {
             setMappingObjects(prev =>
               prev.map(obj =>
@@ -559,20 +579,8 @@ export default function HomographyMappingPage() {
 
     try {
       setIsSaving(true);
-      console.log("Debug: Starting save process");
 
-      // Debug all mapping objects
-      console.log("Debug: All mapping objects:", mappingObjects);
-      console.log("Debug: Mapping objects details:", mappingObjects.map(obj => ({
-        name: obj.name,
-        src_points_length: obj.src_points.length,
-        dst_points_length: obj.dst_points.length,
-        zone_points_length: obj.zone_points.length,
-        zone_name: obj.zone_name,
-        object_name: obj.object_name
-      })));
-
-      // First, process all mappings to add zone points
+      // Process all mappings to ensure they match backend requirements
       const processedMappings = mappingObjects.map(mapping => {
         // Find the zone for this mapping
         const zone = zones.find(z => z.name === mapping.zone_name);
@@ -581,69 +589,39 @@ export default function HomographyMappingPage() {
           return null;
         }
 
-        // Update the mapping with zone points if they're missing
-        const updatedMapping = {
-          ...mapping,
-          zone_points: mapping.zone_points.length > 0 ? mapping.zone_points : zone.points
+        // Ensure exactly 4 points for both src and dst
+        if (mapping.src_points.length !== 4 || mapping.dst_points.length !== 4) {
+          console.log(`Debug: Invalid point count for mapping ${mapping.name}`);
+          return null;
+        }
+
+        // Update the mapping with zone points
+        const updatedMapping: ProcessedMapping = {
+          name: mapping.name,
+          zone_name: mapping.zone_name,
+          object_name: mapping.object_name,
+          zone_points: mapping.zone_points.length > 0 ? mapping.zone_points : zone.points,
+          src_points: mapping.src_points.map(p => [p.x, p.y]),
+          dst_points: mapping.dst_points.map(p => [p.x, p.y])
         };
 
-        console.log(`Debug: Processing mapping ${mapping.name}:`, {
-          original: {
-            src_points: mapping.src_points.length,
-            dst_points: mapping.dst_points.length,
-            zone_points: mapping.zone_points.length
-          },
-          updated: {
-            src_points: updatedMapping.src_points.length,
-            dst_points: updatedMapping.dst_points.length,
-            zone_points: updatedMapping.zone_points.length
-          }
-        });
-
         return updatedMapping;
-      }).filter((mapping): mapping is MappingObject => mapping !== null);
+      }).filter((mapping): mapping is ProcessedMapping => mapping !== null);
 
-      console.log("Debug: Processed mappings:", processedMappings);
-
-      // Then filter for complete mappings
+      // Filter for complete mappings
       const completedMappings = processedMappings.filter(mapping => {
         const isComplete = mapping.src_points.length === 4 &&
           mapping.dst_points.length === 4 &&
           mapping.zone_points.length > 0;
 
-        console.log(`Debug: Validating mapping ${mapping.name}:`, {
-          src_points: mapping.src_points.length,
-          dst_points: mapping.dst_points.length,
-          zone_points: mapping.zone_points.length,
-          isComplete,
-          requirements: {
-            needs_src_points: mapping.src_points.length !== 4,
-            needs_dst_points: mapping.dst_points.length !== 4,
-            needs_zone_points: mapping.zone_points.length === 0
-          }
-        });
-
         return isComplete;
       });
 
-      console.log("Debug: Completed mappings after processing:", completedMappings);
-
       if (completedMappings.length === 0) {
         console.log("Debug: No completed mappings found");
-        const incompleteMappings = processedMappings.map(mapping => ({
-          name: mapping.name,
-          missing: {
-            src_points: 4 - mapping.src_points.length,
-            dst_points: 4 - mapping.dst_points.length,
-            zone_points: mapping.zone_points.length === 0 ? "missing" : "present"
-          }
-        }));
-
         toast({
-          title: "Incomplete Mappings",
-          description: `Please complete all mappings. Missing: ${incompleteMappings.map(m =>
-            `${m.name} (${m.missing.dst_points} map points)`
-          ).join(", ")}`,
+          title: "Error",
+          description: "Please complete all mappings with exactly 4 points for both camera and map views",
           variant: "destructive"
         });
         return;
@@ -651,28 +629,24 @@ export default function HomographyMappingPage() {
 
       const token = localStorage.getItem("token");
       if (!token) {
-        console.log("Debug: No authentication token found");
         throw new Error("No authentication token found");
       }
 
-      // Prepare mappings data
+      // Prepare mappings data in format expected by backend
       const mappingsData = {
         camera_id: selectedCamera.id,
         zones: completedMappings.map(mapping => ({
           name: mapping.zone_name,
-          points: mapping.zone_points.map(p => [p.x, p.y] as [number, number]),
+          points: mapping.zone_points.map(p => [p.x, p.y]),
           objects: [{
             name: mapping.object_name,
-            src_points: mapping.src_points.map(p => [p.x, p.y] as [number, number]),
-            dst_points: mapping.dst_points.map(p => [p.x, p.y] as [number, number])
+            src_points: mapping.src_points,
+            dst_points: mapping.dst_points
           }]
         }))
       };
 
-      console.log("Debug: Mappings data to be sent:", mappingsData);
-
-      // First API call - Save mappings
-      console.log("Debug: Making mappings API call");
+      // Save mappings
       const mappingsResponse = await fetch("http://localhost:8000/homography/save-mappings", {
         method: "POST",
         headers: {
@@ -682,29 +656,21 @@ export default function HomographyMappingPage() {
         body: JSON.stringify(mappingsData)
       });
 
-      console.log("Debug: Mappings API response status:", mappingsResponse.status);
-
       if (!mappingsResponse.ok) {
         const errorData = await mappingsResponse.json();
-        console.error("Debug: Mappings API error:", errorData);
         throw new Error(errorData.detail || "Failed to save mappings");
       }
 
-      // Prepare FOV data for each zone
-      console.log("Debug: Preparing FOV data for each zone");
+      // Update FOV for each zone
       for (const mapping of completedMappings) {
         const fovData = {
           camera_id: selectedCamera.id,
           zone: {
             name: mapping.zone_name,
-            points: mapping.zone_points.map(p => [p.x, p.y] as [number, number])
+            points: mapping.zone_points.map(p => [p.x, p.y])
           }
         };
 
-        console.log("Debug: FOV data to be sent for zone:", mapping.zone_name, fovData);
-
-        // Make FOV API call for each zone
-        console.log("Debug: Making FOV API call for zone:", mapping.zone_name);
         const fovResponse = await fetch("http://localhost:8000/fov/update-zone", {
           method: "POST",
           headers: {
@@ -714,22 +680,18 @@ export default function HomographyMappingPage() {
           body: JSON.stringify(fovData)
         });
 
-        console.log("Debug: FOV API response status for zone:", mapping.zone_name, fovResponse.status);
-
         if (!fovResponse.ok) {
           const errorData = await fovResponse.json();
-          console.error("Debug: FOV API error for zone:", mapping.zone_name, errorData);
           throw new Error(errorData.detail || `Failed to save FOV for zone ${mapping.zone_name}`);
         }
       }
 
-      console.log("Debug: All API calls successful");
       toast({
         title: "Success",
         description: "Homography mappings and FOV saved successfully"
       });
 
-      // Update local state with the response
+      // Reset state
       setMappingObjects([]);
       setCurrentZonePoints([]);
       setSelectedCamera(prev => prev ? { ...prev, has_mapping: true } : null);
@@ -935,66 +897,47 @@ export default function HomographyMappingPage() {
     setCurrentStep(4);
   };
 
-  // Add new function to handle homography testing
-  const handleTestHomography = async () => {
-    if (!selectedCamera || !cameraFrame) return;
+  // Add new function to handle test mapping
+  const handleTestMapping = async () => {
+    if (!selectedCamera) return;
 
     try {
       setIsTesting(true);
       const token = localStorage.getItem("token");
-      if (!token) {
-        throw new Error("No authentication token found");
-      }
+      if (!token) throw new Error("No authentication token found");
 
-      // First, detect objects in the camera frame
-      const detectResponse = await fetch("http://localhost:8000/homography/detect-objects", {
-        method: "POST",
+      // Call the test mapping endpoint
+      const response = await fetch(`http://localhost:8000/camera/${selectedCamera.id}/test-mappings`, {
+        method: "GET",
         headers: {
-          "Content-Type": "application/json",
           "Authorization": `Bearer ${token.trim()}`
-        },
-        body: JSON.stringify({
-          camera_id: selectedCamera.id,
-          frame_url: cameraFrame
-        })
+        }
       });
 
-      if (!detectResponse.ok) {
-        throw new Error("Failed to detect objects");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to get mapped frame");
       }
 
-      const detectedPoints = await detectResponse.json();
-      setTestPoints(detectedPoints);
+      const blob = await response.blob();
+      const imageUrl = URL.createObjectURL(blob);
 
-      // Then, transform the points using homography
-      const transformResponse = await fetch("http://localhost:8000/homography/transform-points", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token.trim()}`
-        },
-        body: JSON.stringify({
-          camera_id: selectedCamera.id,
-          points: detectedPoints
-        })
-      });
-
-      if (!transformResponse.ok) {
-        throw new Error("Failed to transform points");
+      // Clean up previous frame URL if it exists
+      if (cameraFrame) {
+        URL.revokeObjectURL(cameraFrame);
       }
 
-      const transformedPoints = await transformResponse.json();
-      setGeneratedMapPoints(transformedPoints);
+      setCameraFrame(imageUrl);
 
       toast({
         title: "Success",
-        description: "Successfully generated map points",
+        description: "Test mapping completed successfully"
       });
     } catch (error) {
-      console.error("Error testing homography:", error);
+      console.error("Error in test mapping:", error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to test homography mapping",
+        description: error instanceof Error ? error.message : "Failed to process test mapping",
         variant: "destructive"
       });
     } finally {
@@ -1377,6 +1320,7 @@ export default function HomographyMappingPage() {
                                   setSelectionSequence("camera");
                                   setCurrentStep(4);
                                 }}
+                                title="Edit Object"
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
@@ -1384,6 +1328,7 @@ export default function HomographyMappingPage() {
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => handleDeleteObject(zone.name, obj.name)}
+                                title="Delete Object"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -1391,6 +1336,24 @@ export default function HomographyMappingPage() {
                           </div>
                         ))}
                       </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => {
+                          setCurrentZone({
+                            name: zone.name,
+                            points: zone.points,
+                            x: 0,
+                            y: 0
+                          });
+                          setIsZoneMappingComplete(true);
+                          setCurrentStep(3);
+                        }}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Object
+                      </Button>
                     </div>
                   )}
                 </CardContent>
@@ -1565,6 +1528,11 @@ export default function HomographyMappingPage() {
                               onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "map") : handleImageClick(e, "map")}
                               onMouseMove={(e) => handleMouseMove(e, "map")}
                               onMouseLeave={handleMouseLeave}
+                              onLoad={e => {
+                                const img = e.currentTarget;
+                                setMallMapNaturalWidth(img.naturalWidth);
+                                setMallMapNaturalHeight(img.naturalHeight);
+                              }}
                             />
                             {currentStep === 2 && mapZonePoints.map((point, index) => (
                               <div
@@ -1911,70 +1879,7 @@ export default function HomographyMappingPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={async () => {
-                            if (!selectedCamera) return;
-                            try {
-                              setIsTesting(true);
-                              const token = localStorage.getItem("token");
-                              if (!token) throw new Error("No authentication token found");
-
-                              // First get the camera frame
-                              const rtspUrl = `rtsp://${selectedCamera.username}:${selectedCamera.password}@${selectedCamera.ip_address}:554/cam/realmonitor?channel=1&subtype=0`;
-                              const frameResponse = await fetch("http://localhost:8000/camera/frame", {
-                                method: "POST",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                  "Authorization": `Bearer ${token}`
-                                },
-                                body: JSON.stringify({ rtsp_url: rtspUrl })
-                              });
-
-                              if (!frameResponse.ok) {
-                                throw new Error("Failed to get camera frame");
-                              }
-
-                              const frameBlob = await frameResponse.blob();
-                              const frameFile = new File([frameBlob], "frame.jpg", { type: "image/jpeg" });
-
-                              // Create form data for the test mapping request
-                              const formData = new FormData();
-                              formData.append("frame", frameFile);
-
-                              // Send the frame for test mapping
-                              const testResponse = await fetch(
-                                `http://localhost:8000/homography/test-mapping?camera_id=${selectedCamera.id}`,
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Authorization": `Bearer ${token}`
-                                  },
-                                  body: formData
-                                }
-                              );
-
-                              if (!testResponse.ok) {
-                                throw new Error("Failed to process test mapping");
-                              }
-
-                              const processedFrameBlob = await testResponse.blob();
-                              const processedFrameUrl = URL.createObjectURL(processedFrameBlob);
-                              setCameraFrame(processedFrameUrl);
-
-                              toast({
-                                title: "Success",
-                                description: "Test mapping completed successfully"
-                              });
-                            } catch (error) {
-                              console.error("Error in test mapping:", error);
-                              toast({
-                                title: "Error",
-                                description: error instanceof Error ? error.message : "Failed to process test mapping",
-                                variant: "destructive"
-                              });
-                            } finally {
-                              setIsTesting(false);
-                            }
-                          }}
+                          onClick={handleTestMapping}
                           disabled={!selectedCamera || isTesting}
                         >
                           {isTesting ? (
@@ -2001,7 +1906,7 @@ export default function HomographyMappingPage() {
                           <div className="relative w-full h-full">
                             <img
                               src={cameraFrame}
-                              alt="Camera view"
+                              alt="Camera view with mappings"
                               className="w-full h-full object-contain"
                             />
                           </div>
