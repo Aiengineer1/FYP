@@ -6,19 +6,23 @@ from pydantic import BaseModel
 import cv2
 import numpy as np
 from ..schemas.camera import CameraCreate, CameraResponse
-from ..crud import create_camera, get_camera, update_camera, delete_camera, get_cameras_by_mall
+from ..crud import create_camera, get_camera, update_camera, delete_camera, get_cameras_by_mall, get_mall
 from ..database import get_db
 from app.dependencies import get_current_user
 import asyncio
 from datetime import datetime
 import time
 import logging
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Define target size for frame resizing
+TARGET_SIZE = (1366, 768)
 
 class RTSPRequest(BaseModel):
     rtsp_url: str
@@ -374,14 +378,26 @@ async def delete_fov_zone(
 
         # Get existing FOV zones
         current_fov_zones = camera.fov_zones.get("zones", []) if camera.fov_zones else []
-
-        # Remove zone with matching name
-        updated_zones = [z for z in current_fov_zones if z.get("name") != zone_name]
-
-        # Update camera with new FOV zones
+        
+        # Get existing homography mappings
+        current_homography_map = camera.homography_map if camera.homography_map else {"zones": []}
+        
+        # Remove zone with matching name from FOV zones
+        updated_fov_zones = [z for z in current_fov_zones if z.get("name") != zone_name]
+        
+        # Remove all mappings (objects) from the deleted zone
+        updated_homography_zones = []
+        for zone in current_homography_map.get("zones", []):
+            if zone.get("name") != zone_name:
+                updated_homography_zones.append(zone)
+        
+        # Update camera with new FOV zones and homography mappings
         camera_data = {
             "fov_zones": {
-                "zones": updated_zones
+                "zones": updated_fov_zones
+            },
+            "homography_map": {
+                "zones": updated_homography_zones
             }
         }
         
@@ -389,7 +405,109 @@ async def delete_fov_zone(
         if not updated_camera:
             raise HTTPException(status_code=500, detail="Failed to delete FOV zone")
 
-        return {"message": "FOV zone deleted successfully", "camera": updated_camera}
+        return {"message": "FOV zone and its mappings deleted successfully", "camera": updated_camera}
 
     except Exception as e:
+        logger.error(f"Error deleting FOV zone: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/camera/{camera_id}/test-mappings")
+async def test_camera_mappings(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Get camera and its mappings
+        camera = get_camera(db, camera_id)
+        if not camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
+
+        if not camera.homography_map or not camera.homography_map.get("zones"):
+            raise HTTPException(status_code=400, detail="No homography mappings found for this camera")
+
+        # Get mall and its map image
+        mall = get_mall(db, camera.mall_id)
+        if not mall or not mall.map_image:
+            raise HTTPException(status_code=404, detail="Mall map image not found")
+
+        # Convert mall map image bytes to numpy array
+        nparr = np.frombuffer(mall.map_image, np.uint8)
+        lab_map = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if lab_map is None:
+            raise ValueError("Failed to decode mall map image")
+
+        # Get camera connection
+        if camera_id not in camera_connections:
+            # Construct RTSP URL with the correct format
+            rtsp_url = f"rtsp://{camera.username}:{camera.password}@{camera.ip_address}:554/cam/realmonitor?channel=1&subtype=0"
+            logger.info(f"Attempting to connect to RTSP URL: {rtsp_url}")
+            
+            cap = cv2.VideoCapture(rtsp_url)
+            
+            if not cap.isOpened():
+                logger.error(f"Failed to open camera stream with URL: {rtsp_url}")
+                raise HTTPException(status_code=500, detail="Failed to open camera stream")
+            
+            camera_connections[camera_id] = {
+                'cap': cap,
+                'last_access': datetime.now()
+            }
+            logger.info(f"Successfully connected to camera {camera_id}")
+        
+        # Get frame
+        cap = camera_connections[camera_id]['cap']
+        ret, frame = cap.read()
+        if not ret:
+            logger.error(f"Failed to read frame from camera {camera_id}")
+            raise HTTPException(status_code=500, detail="Failed to read frame")
+
+        # Resize frame to match target size
+        frame_resized = cv2.resize(frame, TARGET_SIZE, interpolation=cv2.INTER_AREA)
+
+        # Apply mappings and overlay lab map
+        for zone in camera.homography_map["zones"]:
+            if not zone.get("objects"):
+                continue
+                
+            for obj in zone["objects"]:
+                if len(obj.get("src_points", [])) != 4 or len(obj.get("dst_points", [])) != 4:
+                    continue
+                
+                # Get source and destination points
+                src_pts = np.array(obj["src_points"], dtype=np.float32)
+                dst_pts = np.array(obj["dst_points"], dtype=np.float32)
+
+                # Compute Homography
+                H, _ = cv2.findHomography(dst_pts, src_pts, method=cv2.RANSAC)
+
+                # Warp lab_map onto the frame
+                warped_map = cv2.warpPerspective(lab_map, H, TARGET_SIZE)
+
+                # Create mask and overlay
+                mask = np.zeros_like(frame_resized, dtype=np.uint8)
+                cv2.fillConvexPoly(mask, np.int32(src_pts), (255, 255, 255))
+                masked_warped = cv2.bitwise_and(warped_map, mask)
+                frame_resized = cv2.addWeighted(frame_resized, 1, masked_warped, 0.6, 0)
+
+                # Draw the object's source points
+                cv2.polylines(frame_resized, [np.int32(src_pts)], True, (0, 255, 0), 2)
+                
+                # Add object name
+                center_x = int(np.mean(src_pts[:, 0]))
+                center_y = int(np.mean(src_pts[:, 1]))
+                cv2.putText(frame_resized, obj["name"], (center_x, center_y), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        # Convert frame to JPEG
+        _, buffer = cv2.imencode('.jpg', frame_resized)
+        frame_bytes = buffer.tobytes()
+        
+        return StreamingResponse(
+            iter([frame_bytes]),
+            media_type="image/jpeg"
+        )
+
+    except Exception as e:
+        logger.error(f"Error in test_camera_mappings: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
