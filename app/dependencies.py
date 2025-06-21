@@ -32,6 +32,22 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+def decode_access_token(token: str) -> dict:
+    """Decode JWT token and return payload"""
+    try:
+        # Remove "Bearer " prefix if present
+        if token.startswith("Bearer "):
+            token = token[7:]
+            
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not validate token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -43,10 +59,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         if token.startswith("Bearer "):
             token = token[7:]
             
-        payload = jwt.decode(token,  SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
-        if email is None:
+        user_id: int = payload.get("user_id")
+        
+        if email is None or user_id is None:
             raise credentials_exception
+            
         token_data = TokenData(email=email)
     except JWTError as e:
         print(f"JWT Error: {str(e)}")  # Add logging
@@ -55,4 +74,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     user = get_user_by_email(db, email=token_data.email)
     if user is None:
         raise credentials_exception
-    return user 
+    
+    # Return user data as dict to match what other parts expect
+    return {
+        "id": user.id,
+        "user_id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "mall_id": user.mall_id,
+        "created_at": user.created_at
+    } 

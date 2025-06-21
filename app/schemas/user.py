@@ -117,35 +117,22 @@ class UserSettingsResponse(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
-    token_type: str
-    user_id: int  # This matches the frontend expectation
-    id: int       # Keep the original id field
+    user_id: int
     email: str
     name: str
     mall_id: Optional[int] = None
-    created_at: datetime
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-                "token_type": "bearer",
                 "user_id": 1,
-                "id": 1,
                 "email": "john@example.com",
                 "name": "John Doe",
-                "mall_id": 1,
-                "created_at": "2024-01-01T00:00:00Z"
+                "mall_id": 1
             }
         }
     }
-
-    def dict(self, *args, **kwargs):
-        # Override dict method to ensure both id and user_id are included
-        data = super().dict(*args, **kwargs)
-        if "id" in data and "user_id" not in data:
-            data["user_id"] = data["id"]
-        return data
 
 class MallStatusResponse(BaseModel):
     has_mall: bool

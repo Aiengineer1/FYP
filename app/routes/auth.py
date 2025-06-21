@@ -56,24 +56,54 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=LoginResponse)
 def login(user: UserLogin, db: Session = Depends(get_db)):
-    db_user = get_user_by_email(db, user.email)
-    if not db_user or not pwd_context.verify(user.password, db_user.password):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
-    
-    # Create access token
-    access_token = create_access_token(data={"sub": db_user.email})
-    
-    # Create response with both id and user_id
-    return LoginResponse(
-        access_token=access_token,
-        token_type="bearer",
-        id=db_user.id,
-        user_id=db_user.id,  # Set both id and user_id
-        email=db_user.email,
-        name=db_user.name,
-        mall_id=db_user.mall_id,
-        created_at=db_user.created_at
-    )
+    try:
+        logger.info(f"Processing login request for email: {user.email}")
+        
+        # Get user from database
+        db_user = get_user_by_email(db, user.email)
+        if not db_user:
+            logger.warning(f"Login failed: User {user.email} not found")
+            raise HTTPException(status_code=400, detail="Invalid credentials")
+        
+        # Verify password
+        if not pwd_context.verify(user.password, db_user.password):
+            logger.warning(f"Login failed: Invalid password for {user.email}")
+            raise HTTPException(status_code=400, detail="Invalid credentials")
+        
+        logger.info(f"User authenticated successfully: {db_user.email}")
+        
+        # Create JWT token with frontend-expected payload format
+        from datetime import datetime, timedelta
+        token_data = {
+            "user_id": db_user.id,
+            "email": db_user.email,
+            "name": db_user.name,
+            "mall_id": db_user.mall_id,
+            "sub": db_user.email,  # Standard JWT claim
+            "exp": datetime.utcnow() + timedelta(hours=24)
+        }
+        access_token = create_access_token(data=token_data)
+        
+        # Return response in exact format expected by frontend
+        response = {
+            "access_token": access_token,
+            "user_id": db_user.id,
+            "name": db_user.name, 
+            "email": db_user.email,
+            "mall_id": db_user.mall_id
+        }
+        
+        logger.info(f"Login successful for user: {db_user.email}")
+        return response
+        
+    except HTTPException as http_err:
+        raise http_err
+    except Exception as e:
+        logger.error(f"Unexpected error during login: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "An unexpected error occurred", "code": "LOGIN_ERROR"}
+        )
 
 @router.get("/check-mall/{user_id}", response_model=MallStatusResponse)
 def check_mall_status(user_id: int, db: Session = Depends(get_db)):
@@ -82,16 +112,91 @@ def check_mall_status(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     return status
 
+@router.get("/verify")
+async def verify_token(current_user: dict = Depends(get_current_user)):
+    """Verify JWT token and return user data for frontend AuthInitializer"""
+    try:
+        return {
+            "valid": True,
+            "user": {
+                "user_id": current_user["id"],
+                "name": current_user["name"],
+                "email": current_user["email"], 
+                "mall_id": current_user["mall_id"]
+            }
+        }
+    except Exception as e:
+        logger.error(f"Token verification failed: {str(e)}")
+        raise HTTPException(
+            status_code=401, 
+            detail={"valid": False, "message": "Invalid token"}
+        )
+
 @router.delete("/user/{user_id}")
-def delete_user_route(user_id: int, db: Session = Depends(get_db)):
+def delete_user_route(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Delete a user and their associated mall.
-    This will cascade delete the mall due to the ondelete="CASCADE" constraint.
+    Delete a specific user and their associated mall.
+    Only admin users or the user themselves can delete accounts.
     """
-    result = delete_user(db, user_id)
-    if result is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"detail": "User and associated mall deleted successfully"}
+    try:
+        # Check if user is trying to delete their own account or is admin
+        if current_user["id"] != user_id:
+            # For now, allow only self-deletion. Add admin check here if needed
+            raise HTTPException(
+                status_code=403, 
+                detail="You can only delete your own account"
+            )
+        
+        logger.info(f"User {current_user['id']} requesting account deletion")
+        
+        result = delete_user(db, user_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        logger.info(f"User {user_id} and associated mall deleted successfully")
+        return {
+            "success": True,
+            "message": "Account and associated mall deleted successfully",
+            "user_id": user_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete account")
+
+@router.delete("/account/delete")
+def delete_my_account(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete the current user's account and associated mall.
+    This is a convenience endpoint for users to delete their own account.
+    """
+    try:
+        user_id = current_user["id"]
+        logger.info(f"User {user_id} requesting self-account deletion")
+        
+        result = delete_user(db, user_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="User account not found")
+        
+        logger.info(f"User {user_id} successfully deleted their account")
+        return {
+            "success": True,
+            "message": "Your account and associated mall have been deleted successfully",
+            "user_id": user_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user account {current_user['id']}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete your account")
 
 @router.get("/user/me", response_model=UserResponse)
 async def get_current_user_profile(

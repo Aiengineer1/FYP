@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Query
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 from typing import List, Dict
 from pydantic import BaseModel
@@ -20,9 +20,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Define target size for frame resizing
-TARGET_SIZE = (1366, 768)
 
 class RTSPRequest(BaseModel):
     rtsp_url: str
@@ -87,35 +84,72 @@ async def cleanup_cameras():
 
 @router.post("/camera/frame")
 async def get_camera_frame(
-    request: RTSPRequest,
+    request: dict,  # {"rtsp_url": "rtsp://..."}
     current_user: dict = Depends(get_current_user)
 ):
+    """Get latest camera frame for frontend polling with optimized headers"""
     try:
-        # Open RTSP stream
-        cap = cv2.VideoCapture(request.rtsp_url)
-        print(request.rtsp_url)
+        rtsp_url = request.get("rtsp_url")
+        if not rtsp_url:
+            raise HTTPException(status_code=400, detail="rtsp_url is required")
+        
+        # Try to get frame from camera worker first (if available)
+        try:
+            from ..ai_solutions.camera_worker import camera_worker_manager
+            # Extract camera_id from request if available
+            camera_id = request.get("camera_id")
+            if camera_id and camera_id in camera_worker_manager.workers:
+                worker = camera_worker_manager.workers[camera_id]
+                frame = await worker.get_latest_frame()
+                if frame is not None:
+                    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    frame_bytes = buffer.tobytes()
+                    
+                    return Response(
+                        content=frame_bytes,
+                        media_type="image/jpeg",
+                        headers={
+                            "Cache-Control": "no-cache, no-store, must-revalidate",
+                            "Pragma": "no-cache",
+                            "Expires": "0",
+                            "Access-Control-Allow-Origin": "*"
+                        }
+                    )
+        except Exception:
+            pass  # Fall through to direct RTSP capture
+        
+        # Fallback to direct RTSP capture
+        cap = cv2.VideoCapture(rtsp_url)
         if not cap.isOpened():
-            raise HTTPException(status_code=500, detail="Failed to open camera stream")
+            raise HTTPException(status_code=404, detail="Camera frame not available")
         
         # Read a frame
         ret, frame = cap.read()
-        if not ret:
-            raise HTTPException(status_code=500, detail="Failed to read frame")
-        
-        # Convert frame to JPEG
-        _, buffer = cv2.imencode('.jpg', frame)
-        frame_bytes = buffer.tobytes()
-        
-        # Release resources
         cap.release()
         
-        # Return frame as JPEG
-        return StreamingResponse(
-            iter([frame_bytes]),
-            media_type="image/jpeg"
+        if not ret:
+            raise HTTPException(status_code=404, detail="Failed to capture frame")
+        
+        # Convert frame to JPEG with quality optimization
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        frame_bytes = buffer.tobytes()
+        
+        # Return frame with proper headers for frontend polling
+        return Response(
+            content=frame_bytes,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache", 
+                "Expires": "0",
+                "Access-Control-Allow-Origin": "*"
+            }
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error getting camera frame: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/add_camera", response_model=CameraResponse)
@@ -206,6 +240,64 @@ async def update_camera_route(
 def delete_camera_route(camera_id: int, db: Session = Depends(get_db)):
     delete_camera(db, camera_id)
     return {"detail": "Camera deleted"}
+
+@router.get("/{camera_id}/stream")
+async def get_optimized_camera_stream(
+    camera_id: int,
+    quality: str = Query("medium", description="Stream quality: low, medium, high"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get optimized camera stream with quality control"""
+    try:
+        from ..ai_solutions.camera_worker import camera_worker_manager
+        
+        # Get camera details
+        db_camera = get_camera(db, camera_id)
+        if not db_camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
+        
+        # Check if worker is running and get latest frame
+        worker = camera_worker_manager.workers.get(camera_id)
+        if worker:
+            frame = await worker.get_latest_frame()
+            if frame is not None:
+                # Encode frame with quality settings
+                quality_settings = {
+                    "low": 50,
+                    "medium": 75,
+                    "high": 95
+                }
+                encode_param = [cv2.IMWRITE_JPEG_QUALITY, quality_settings.get(quality, 75)]
+                _, buffer = cv2.imencode('.jpg', frame, encode_param)
+                
+                return StreamingResponse(
+                    iter([buffer.tobytes()]),
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "no-cache"}
+                )
+        
+        # Fallback to direct RTSP if worker not available
+        rtsp_url = f"rtsp://{db_camera.username}:{db_camera.password}@{db_camera.ip_address}/stream"
+        cap = cv2.VideoCapture(rtsp_url)
+        
+        if not cap.isOpened():
+            raise HTTPException(status_code=500, detail="Camera stream unavailable")
+        
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            raise HTTPException(status_code=500, detail="Failed to capture frame")
+        
+        _, buffer = cv2.imencode('.jpg', frame)
+        return StreamingResponse(
+            iter([buffer.tobytes()]),
+            media_type="image/jpeg"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{camera_id}/live")
 async def get_camera_stream(
@@ -411,6 +503,9 @@ async def delete_fov_zone(
         logger.error(f"Error deleting FOV zone: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Define target size for frame resizing
+TARGET_SIZE = (1366, 768)
+
 @router.get("/camera/{camera_id}/test-mappings")
 async def test_camera_mappings(
     camera_id: int,
@@ -436,6 +531,9 @@ async def test_camera_mappings(
         lab_map = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if lab_map is None:
             raise ValueError("Failed to decode mall map image")
+        
+        # Resize lab_map to the same target size to ensure consistent coordinate systems
+        lab_map = cv2.resize(lab_map, TARGET_SIZE, interpolation=cv2.INTER_AREA)
 
         # Get camera connection
         if camera_id not in camera_connections:
@@ -465,6 +563,9 @@ async def test_camera_mappings(
         # Resize frame to match target size
         frame_resized = cv2.resize(frame, TARGET_SIZE, interpolation=cv2.INTER_AREA)
 
+        # Create a copy of the lab_map to draw debug points on
+        map_with_debug_points = lab_map.copy()
+
         # Apply mappings and overlay lab map
         for zone in camera.homography_map["zones"]:
             if not zone.get("objects"):
@@ -478,29 +579,34 @@ async def test_camera_mappings(
                 src_pts = np.array(obj["src_points"], dtype=np.float32)
                 dst_pts = np.array(obj["dst_points"], dtype=np.float32)
 
-                # Compute Homography
+                # --- Draw debug points on the map image ---
+                cv2.polylines(map_with_debug_points, [np.int32(dst_pts)], True, (0, 0, 255), 3) # Draw in red
+                # Add object name on the map for clarity
+                (text_width, text_height), _ = cv2.getTextSize(obj["name"], cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+                center_x = int(np.mean(dst_pts[:, 0]))
+                center_y = int(np.mean(dst_pts[:, 1]))
+                cv2.putText(map_with_debug_points, obj["name"], (center_x - text_width // 2, center_y + text_height // 2), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+
+                # --- Perform homography and overlay on camera frame ---
                 H, _ = cv2.findHomography(dst_pts, src_pts, method=cv2.RANSAC)
-
-                # Warp lab_map onto the frame
                 warped_map = cv2.warpPerspective(lab_map, H, TARGET_SIZE)
-
-                # Create mask and overlay
                 mask = np.zeros_like(frame_resized, dtype=np.uint8)
                 cv2.fillConvexPoly(mask, np.int32(src_pts), (255, 255, 255))
                 masked_warped = cv2.bitwise_and(warped_map, mask)
                 frame_resized = cv2.addWeighted(frame_resized, 1, masked_warped, 0.6, 0)
-
-                # Draw the object's source points
                 cv2.polylines(frame_resized, [np.int32(src_pts)], True, (0, 255, 0), 2)
-                
-                # Add object name
                 center_x = int(np.mean(src_pts[:, 0]))
                 center_y = int(np.mean(src_pts[:, 1]))
                 cv2.putText(frame_resized, obj["name"], (center_x, center_y), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
+        # --- Create side-by-side diagnostic image ---
+        diagnostic_image = np.hstack([frame_resized, map_with_debug_points])
+
         # Convert frame to JPEG
-        _, buffer = cv2.imencode('.jpg', frame_resized)
+        _, buffer = cv2.imencode('.jpg', diagnostic_image)
         frame_bytes = buffer.tobytes()
         
         return StreamingResponse(

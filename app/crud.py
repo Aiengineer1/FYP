@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from .models import User, Mall, Camera, Customer
 from .schemas.user import UserResponse
+from .utils.id_manager import create_record_with_managed_id, get_next_available_id, get_id_statistics
 from passlib.context import CryptContext
 import logging
 
@@ -13,15 +14,13 @@ logger = logging.getLogger(__name__)
 # CRUD operations for User
 def create_user(db: Session, user_data):
     try:
-        logger.info("Creating new user...")
+        logger.info("Creating new user with managed ID...")
         # Hash the password
         hashed_password = pwd_context.hash(user_data["password"])
         user_data["password"] = hashed_password
         
-        db_user = User(**user_data)
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+        # Create user with managed ID (fills gaps)
+        db_user = create_record_with_managed_id(db, User, user_data)
         
         # Convert to UserResponse to ensure proper field handling
         return UserResponse.model_validate(db_user)
@@ -187,11 +186,15 @@ def delete_user(db: Session, user_id: int):
 
 # CRUD operations for Mall
 def create_mall(db: Session, mall_data):
-    db_mall = Mall(**mall_data)
-    db.add(db_mall)
-    db.commit()
-    db.refresh(db_mall)
-    return db_mall
+    try:
+        logger.info("Creating new mall with managed ID...")
+        # Create mall with managed ID (fills gaps)
+        db_mall = create_record_with_managed_id(db, Mall, mall_data)
+        return db_mall
+    except Exception as e:
+        logger.error(f"Error creating mall: {str(e)}")
+        db.rollback()
+        raise
 
 def get_mall(db: Session, mall_id: int):
     return db.query(Mall).filter(Mall.id == mall_id).first()
@@ -227,11 +230,15 @@ def delete_mall(db: Session, mall_id: int):
 
 # CRUD operations for Camera
 def create_camera(db: Session, camera_data):
-    db_camera = Camera(**camera_data)
-    db.add(db_camera)
-    db.commit()
-    db.refresh(db_camera)
-    return db_camera
+    try:
+        logger.info("Creating new camera with managed ID...")
+        # Create camera with managed ID (fills gaps)
+        db_camera = create_record_with_managed_id(db, Camera, camera_data)
+        return db_camera
+    except Exception as e:
+        logger.error(f"Error creating camera: {str(e)}")
+        db.rollback()
+        raise
 
 def get_camera(db: Session, camera_id: int):
     return db.query(Camera).filter(Camera.id == camera_id).first()
@@ -295,11 +302,15 @@ def delete_camera(db: Session, camera_id: int):
 
 # CRUD operations for Customer
 def create_customer(db: Session, customer_data):
-    db_customer = Customer(**customer_data)
-    db.add(db_customer)
-    db.commit()
-    db.refresh(db_customer)
-    return db_customer
+    try:
+        logger.info("Creating new customer with managed ID...")
+        # Create customer with managed ID (fills gaps)
+        db_customer = create_record_with_managed_id(db, Customer, customer_data)
+        return db_customer
+    except Exception as e:
+        logger.error(f"Error creating customer: {str(e)}")
+        db.rollback()
+        raise
 
 def get_customer(db: Session, customer_id: int):
     return db.query(Customer).filter(Customer.id == customer_id).first()
@@ -316,3 +327,35 @@ def delete_customer(db: Session, customer_id: int):
     db_customer = db.query(Customer).filter(Customer.id == customer_id).first()
     db.delete(db_customer)
     db.commit()
+
+# ID Management Functions
+def get_all_id_statistics(db: Session):
+    """Get ID statistics for all models"""
+    try:
+        logger.info("Getting ID statistics for all models...")
+        models = [User, Mall, Camera, Customer]
+        statistics = {}
+        
+        for model in models:
+            stats = get_id_statistics(db, model)
+            statistics[model.__name__.lower()] = stats
+            
+        return statistics
+    except Exception as e:
+        logger.error(f"Error getting ID statistics: {str(e)}")
+        raise
+
+def get_next_available_ids(db: Session):
+    """Get next available ID for each model"""
+    try:
+        models = [User, Mall, Camera, Customer]
+        next_ids = {}
+        
+        for model in models:
+            next_id = get_next_available_id(db, model)
+            next_ids[model.__name__.lower()] = next_id
+            
+        return next_ids
+    except Exception as e:
+        logger.error(f"Error getting next available IDs: {str(e)}")
+        raise

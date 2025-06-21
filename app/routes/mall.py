@@ -140,21 +140,85 @@ async def update_mall_route(
         logger.error(f"Error updating mall: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.delete("/delete-my-mall")
+def delete_my_mall(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Delete the current user's mall.
+    Convenience endpoint for users to delete their own mall.
+    """
+    try:
+        user_mall_id = current_user.get("mall_id")
+        if not user_mall_id:
+            raise HTTPException(status_code=404, detail="You don't have a mall to delete")
+        
+        logger.info(f"User {current_user['id']} requesting to delete their mall {user_mall_id}")
+        
+        # Get the mall to verify it exists
+        mall = get_mall(db, user_mall_id)
+        if mall is None:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        # Delete the mall
+        result = delete_mall(db, user_mall_id)
+        if result is None:
+            raise HTTPException(status_code=500, detail="Failed to delete mall")
+        
+        logger.info(f"Mall {user_mall_id} deleted successfully by user {current_user['id']}")
+        return {
+            "success": True,
+            "message": "Your mall has been deleted successfully",
+            "mall_id": user_mall_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user's mall: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete your mall")
+
 @router.delete("/{mall_id}")
 def delete_mall_route(
     mall_id: int, 
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    """
+    Delete a mall and update the owner's mall_id to NULL.
+    Only the mall owner can delete their mall.
+    """
     try:
+        logger.info(f"User {current_user['id']} requesting to delete mall {mall_id}")
+        
+        # Get the mall
         mall = get_mall(db, mall_id)
         if mall is None:
             raise HTTPException(status_code=404, detail="Mall not found")
-        delete_mall(db, mall_id)
-        return {"detail": "Mall deleted"}
+        
+        # Check if the current user owns this mall
+        if current_user.get("mall_id") != mall_id:
+            raise HTTPException(
+                status_code=403, 
+                detail="You can only delete your own mall"
+            )
+        
+        # Delete the mall
+        result = delete_mall(db, mall_id)
+        if result is None:
+            raise HTTPException(status_code=500, detail="Failed to delete mall")
+        
+        logger.info(f"Mall {mall_id} deleted successfully by user {current_user['id']}")
+        return {
+            "success": True,
+            "message": "Mall deleted successfully",
+            "mall_id": mall_id
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error deleting mall: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error deleting mall {mall_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete mall")
 
 @router.post("/{mall_id}/setup", response_model=MallResponse)
 async def setup_mall(
