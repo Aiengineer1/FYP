@@ -52,7 +52,7 @@ export default function HomographyMappingPage() {
   const [objects, setObjects] = useState<{ name: string; points: Point[] }[]>([])
   const [systemRunning, setSystemRunning] = useState<boolean>(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [mallMapImage, setMallMapImage] = useState<string>("")
+  const [mallMapImage, setMallMapImage] = useState<string | null>("")
   const [cameraFrame, setCameraFrame] = useState<string | null>(null)
   const [isCapturing, setIsCapturing] = useState(false)
   const [captureError, setCaptureError] = useState<string | null>(null)
@@ -100,6 +100,7 @@ export default function HomographyMappingPage() {
   }>>([]);
   const [mallMapNaturalWidth, setMallMapNaturalWidth] = useState<number | null>(null);
   const [mallMapNaturalHeight, setMallMapNaturalHeight] = useState<number | null>(null);
+  const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
 
   // Fetch cameras and mall map when component mounts
   useEffect(() => {
@@ -114,45 +115,65 @@ export default function HomographyMappingPage() {
 
         const user = JSON.parse(userData)
 
-        // Fetch mall map image
-        const mallResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/image`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        })
-
-        if (!mallResponse.ok) {
-          throw new Error("Failed to fetch mall map")
+        // Check if user has a mall configured
+        if (!user.mall_id) {
+          console.warn("No mall configured for user")
+          setCameras([])
+          setMallMapImage(null)
+          setIsLoading(false)
+          return
         }
 
-        const mallImageBlob = await mallResponse.blob()
-        const mallImageUrl = URL.createObjectURL(mallImageBlob)
-        setMallMapImage(mallImageUrl)
+        // Fetch mall map image
+        try {
+          const mallResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/image`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          })
+
+          if (mallResponse.ok) {
+            const mallImageBlob = await mallResponse.blob()
+            const mallImageUrl = URL.createObjectURL(mallImageBlob)
+            setMallMapImage(mallImageUrl)
+          } else {
+            console.warn("Mall map image not available")
+            setMallMapImage(null)
+          }
+        } catch (error) {
+          console.warn("Could not fetch mall map:", error)
+          setMallMapImage(null)
+        }
 
         // Fetch cameras for the mall
-        const camerasResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/cameras`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
+        try {
+          const camerasResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/cameras`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          })
+
+          if (camerasResponse.ok) {
+            const camerasData = await camerasResponse.json()
+            setCameras(Array.isArray(camerasData) ? camerasData : [])
+          } else {
+            console.warn("Cameras not available")
+            setCameras([])
           }
-        })
-
-        if (!camerasResponse.ok) {
-          throw new Error("Failed to fetch cameras")
+        } catch (error) {
+          console.warn("Could not fetch cameras:", error)
+          setCameras([])
         }
 
-        const camerasData = await camerasResponse.json()
-        if (!Array.isArray(camerasData)) {
-          throw new Error("Invalid cameras data received")
-        }
-        setCameras(camerasData)
       } catch (error) {
         console.error("Error fetching data:", error)
         toast({
-          title: "Error",
-          description: error instanceof Error ? error.message : "Failed to fetch data",
-          variant: "destructive",
+          title: "Warning",
+          description: "Some data could not be loaded. Please ensure your mall is properly configured.",
+          variant: "default",
         })
         setCameras([])
+        setMallMapImage(null)
       } finally {
         setIsLoading(false)
       }
@@ -1518,20 +1539,29 @@ export default function HomographyMappingPage() {
                           </Badge>
                         )}
                       </div>
-                      <div className="relative w-full h-[500px] bg-muted rounded-md overflow-hidden">
+                      <div
+                        className="relative bg-muted rounded-md overflow-hidden"
+                        style={{
+                          width: imgSize.width ? `${imgSize.width}px` : "auto",
+                          height: imgSize.height ? `${imgSize.height}px` : "auto"
+                        }}
+                      >
                         {mallMapImage ? (
                           <div className="relative w-full h-full">
                             <img
                               src={mallMapImage}
                               alt="Mall top-view map"
-                              className="w-full h-full object-contain"
+                              className="object-contain"
                               onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "map") : handleImageClick(e, "map")}
                               onMouseMove={(e) => handleMouseMove(e, "map")}
                               onMouseLeave={handleMouseLeave}
                               onLoad={e => {
-                                const img = e.currentTarget;
-                                setMallMapNaturalWidth(img.naturalWidth);
-                                setMallMapNaturalHeight(img.naturalHeight);
+                                setImgSize({
+                                  width: e.currentTarget.naturalWidth,
+                                  height: e.currentTarget.naturalHeight
+                                });
+                                setMallMapNaturalWidth(e.currentTarget.naturalWidth);
+                                setMallMapNaturalHeight(e.currentTarget.naturalHeight);
                               }}
                             />
                             {currentStep === 2 && mapZonePoints.map((point, index) => (

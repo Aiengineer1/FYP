@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Camera, CameraOff, ArrowRight } from "lucide-react"
+import { Camera, CameraOff, ArrowRight, Store, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
@@ -35,12 +35,14 @@ export default function DashboardPage() {
   const [mallData, setMallData] = useState<MallData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [noMallFound, setNoMallFound] = useState(false)
 
   useEffect(() => {
     const fetchMallData = async () => {
       try {
         setIsLoading(true)
         setError(null)
+        setNoMallFound(false)
 
         // Get user data from localStorage
         const userData = localStorage.getItem("user")
@@ -52,7 +54,9 @@ export default function DashboardPage() {
         const mallId = user.mall_id
 
         if (!mallId) {
-          throw new Error("No mall associated with this account. Please set up a mall first.")
+          setNoMallFound(true)
+          setIsLoading(false)
+          return
         }
 
         // Get token from localStorage
@@ -69,6 +73,12 @@ export default function DashboardPage() {
         })
 
         if (!response.ok) {
+          if (response.status === 404) {
+            // Mall was deleted or doesn't exist
+            setNoMallFound(true)
+            setIsLoading(false)
+            return
+          }
           const errorData = await response.json()
           throw new Error(errorData.detail || "Failed to fetch mall data")
         }
@@ -162,6 +172,33 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+        </div>
+      </AuthenticatedLayout>
+    )
+  }
+
+  // No mall found state
+  if (noMallFound) {
+    return (
+      <AuthenticatedLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <p className="text-muted-foreground">Welcome to InsightCart Mall Analytics</p>
+          </div>
+          <Card className="flex flex-col items-center justify-center p-12 text-center">
+            <Store className="h-16 w-16 text-muted-foreground mb-6" />
+            <h2 className="text-2xl font-semibold mb-3">No Mall Configured</h2>
+            <p className="text-muted-foreground mb-6 max-w-md">
+              You haven't set up a mall yet. Create your mall profile to start monitoring and analyzing customer behavior.
+            </p>
+            <Link href="/mall-setup">
+              <Button size="lg" className="gap-2">
+                <Plus className="h-5 w-5" />
+                Set Up Mall
+              </Button>
+            </Link>
+          </Card>
         </div>
       </AuthenticatedLayout>
     )

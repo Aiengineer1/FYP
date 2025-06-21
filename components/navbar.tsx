@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { ShoppingBag, LogOut } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { RealTimeNotifications } from "@/components/notifications/real-time-notifications"
 
 export default function Navbar() {
   const pathname = usePathname()
@@ -46,6 +47,10 @@ export default function Navbar() {
               <Link href="/settings">
                 <Button variant="ghost">Settings</Button>
               </Link>
+              <Link href="/integration-test">
+                <Button variant="ghost">Test Backend</Button>
+              </Link>
+              <RealTimeNotifications />
               <Button variant="ghost" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout

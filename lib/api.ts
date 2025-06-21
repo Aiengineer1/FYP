@@ -1,6 +1,7 @@
 import { MallData, MallAnalytics, CameraAnalytics } from "@/types"
+import { config } from "./config"
 
-const API_BASE_URL = "http://localhost:8000"
+const API_BASE_URL = config.api.baseUrl
 
 export async function fetchMallAnalytics(mallId: number, token: string): Promise<MallAnalytics> {
   const response = await fetch(`${API_BASE_URL}/mall/${mallId}/analytics`, {

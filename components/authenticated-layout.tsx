@@ -52,8 +52,17 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
           : user.email[0].toUpperCase()
         setUserInitials(initials)
 
+        // If user doesn't have a mall_id, don't try to fetch mall data
+        if (!user.mall_id) {
+          setMallName("No Mall Configured")
+          return
+        }
+
         const token = localStorage.getItem("token")
-        if (!token) return
+        if (!token) {
+          setMallName("Authentication Required")
+          return
+        }
 
         const response = await fetch(`http://localhost:8000/mall/${user.mall_id}`, {
           headers: {
@@ -62,14 +71,22 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
         })
 
         if (!response.ok) {
-          throw new Error("Failed to fetch mall data")
+          // Handle different error cases gracefully
+          if (response.status === 404) {
+            setMallName("Mall Not Found")
+          } else if (response.status === 401) {
+            setMallName("Authentication Required")
+          } else {
+            setMallName("Mall Data Unavailable")
+          }
+          return
         }
 
         const data = await response.json()
         setMallName(data.name)
       } catch (error) {
-        console.error("Error fetching data:", error)
-        setMallName("Loading...")
+        console.warn("Could not fetch mall data:", error)
+        setMallName("Mall Data Unavailable")
       }
     }
 

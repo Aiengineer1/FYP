@@ -100,6 +100,14 @@ export default function CameraConfigPage() {
       }
 
       const user = JSON.parse(userData)
+
+      // Check if user has a mall configured
+      if (!user.mall_id) {
+        console.warn("No mall configured for user")
+        setCameras([]) // Set empty cameras array
+        return
+      }
+
       const token = localStorage.getItem("token")
       if (!token) {
         toast({
@@ -117,17 +125,24 @@ export default function CameraConfigPage() {
       })
 
       if (!response.ok) {
+        if (response.status === 404) {
+          // Mall doesn't exist or no cameras found
+          console.warn("Mall not found or no cameras available")
+          setCameras([])
+          return
+        }
         throw new Error("Failed to fetch cameras")
       }
 
       const data = await response.json()
-      setCameras(data)
+      setCameras(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error("Error fetching cameras:", error)
+      setCameras([]) // Set empty array on error
       toast({
-        title: "Error",
-        description: "Failed to fetch cameras. Please try again.",
-        variant: "destructive",
+        title: "Warning",
+        description: "Could not load cameras. You can still add new cameras.",
+        variant: "default",
       })
     } finally {
       setIsLoading(false)
