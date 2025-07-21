@@ -34,17 +34,15 @@ class BackendTester:
     def print_section(self, title):
         """Print a formatted section header"""
         print(f"\n{'='*60}")
-        print(f"🧪 {title}")
+        print(title)
         print(f"{'='*60}")
     
-    def print_test(self, test_name, status="TESTING"):
+    def print_test(self, test_name, status):
         """Print test status"""
-        if status == "TESTING":
-            print(f"\n🔬 {test_name}...")
-        elif status == "SUCCESS":
-            print(f"✅ {test_name} - SUCCESS")
-        elif status == "FAILED":
-            print(f"❌ {test_name} - FAILED")
+        if status == "SUCCESS":
+            print(f"{test_name} - SUCCESS")
+        else:
+            print(f"{test_name} - FAILED")
     
     def create_test_image(self, size=(800, 600), format='PNG'):
         """Create a test image in memory"""
@@ -92,7 +90,7 @@ class BackendTester:
                 return True
             elif response.status_code == 400 and "already registered" in response.text:
                 self.print_test("User Signup", "SUCCESS")
-                print("✅ User already exists (expected)")
+                print(f" User already exists (expected)")
                 return True
             else:
                 self.print_test("User Signup", "FAILED")
@@ -443,8 +441,8 @@ class BackendTester:
 
     def run_all_tests(self):
         """Run complete test suite"""
-        print("🚀 STARTING COMPLETE BACKEND TEST SUITE")
-        print(f"⏰ Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("STARTING COMPLETE BACKEND TEST SUITE")
+        print(f"Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         results = {}
         
@@ -476,17 +474,17 @@ class BackendTester:
         passed_tests = sum(1 for result in results.values() if result)
         
         for test_name, result in results.items():
-            status = "✅ PASSED" if result else "❌ FAILED"
+            status = "PASSED" if result else "FAILED"
             print(f"{status} - {test_name.replace('_', ' ').title()}")
         
-        print(f"\n🎯 OVERALL RESULT: {passed_tests}/{total_tests} tests passed")
+        print(f"\nOVERALL RESULT: {passed_tests}/{total_tests} tests passed")
         
         if passed_tests == total_tests:
-            print("🎉 ALL TESTS PASSED! Backend is fully functional!")
+            print(" ALL TESTS PASSED! Backend is fully functional!")
         else:
-            print(f"⚠️  {total_tests - passed_tests} tests failed. Review the issues above.")
+            print(f" {total_tests - passed_tests} tests failed. Review the issues above.")
         
-        print(f"⏰ End Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"End Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 if __name__ == "__main__":
     tester = BackendTester()

@@ -26,22 +26,22 @@ class SocketIOTester:
         
         @self.sio.event
         def connect():
-            print("✅ Socket.io Connected!")
+            print("Socket.io Connected!")
             print(f"   Session ID: {self.sio.sid}")
             self.connected = True
         
         @self.sio.event
         def disconnect():
-            print("🔌 Socket.io Disconnected")
+            print("Socket.io Disconnected")
             self.connected = False
         
         @self.sio.event
         def connect_error(data):
-            print(f"❌ Connection Error: {data}")
+            print(f"Connection Error: {data}")
         
         @self.sio.event
         def analytics_update(data):
-            print("📊 Analytics Update Received:")
+            print("Analytics Update Received:")
             print(f"   Type: {data.get('type', 'unknown')}")
             print(f"   Mall ID: {data.get('data', {}).get('mallId', 'N/A')}")
             print(f"   Timestamp: {data.get('timestamp', 'N/A')}")
@@ -49,7 +49,7 @@ class SocketIOTester:
         
         @self.sio.event
         def detection_update(data):
-            print("🎯 Detection Update Received:")
+            print("Detection Update Received:")
             camera_id = data.get('data', {}).get('cameraId', 'N/A')
             detections = data.get('data', {}).get('detections', [])
             print(f"   Camera ID: {camera_id}")
@@ -60,7 +60,7 @@ class SocketIOTester:
         
         @self.sio.event
         def camera_status(data):
-            print("📹 Camera Status Update:")
+            print("Camera Status Update:")
             print(f"   Camera ID: {data.get('data', {}).get('cameraId', 'N/A')}")
             print(f"   Status: {data.get('data', {}).get('status', 'N/A')}")
             print(f"   Message: {data.get('data', {}).get('message', 'N/A')}")
@@ -68,17 +68,17 @@ class SocketIOTester:
         
         @self.sio.event
         def error(data):
-            print(f"⚠️  Socket.io Error: {data}")
+            print(f"Socket.io Error: {data}")
             self.events_received.append(('error', data))
         
         @self.sio.event
         def status_update(data):
-            print(f"📡 Status Update: {data}")
+            print(f"Status Update: {data}")
             self.events_received.append(('status_update', data))
     
     def get_auth_token(self):
         """Get authentication token"""
-        print("🔐 Getting authentication token...")
+        print("Getting authentication token...")
         
         # Create test user
         import random
@@ -94,9 +94,9 @@ class SocketIOTester:
         try:
             response = requests.post(f"{BASE_URL}/auth/signup", json=signup_data)
             if response.status_code != 200:
-                print(f"⚠️  Signup failed, trying login: {response.text}")
+                print(f"Signup failed, trying login: {response.text}")
         except Exception as e:
-            print(f"⚠️  Signup error: {str(e)}")
+            print(f"Signup error: {str(e)}")
         
         # Login
         login_data = {
@@ -110,22 +110,22 @@ class SocketIOTester:
                 login_response = response.json()
                 self.token = login_response.get('access_token')
                 self.mall_id = login_response.get('mall_id', 1)
-                print(f"✅ Token obtained: {self.token[:30]}...")
+                print(f"Token obtained: {self.token[:30]}...")
                 print(f"   Mall ID: {self.mall_id}")
                 return True
             else:
-                print(f"❌ Login failed: {response.text}")
+                print(f"Login failed: {response.text}")
                 return False
         except Exception as e:
-            print(f"❌ Login error: {str(e)}")
+            print(f"Login error: {str(e)}")
             return False
     
     def test_connection(self):
         """Test Socket.io connection"""
-        print("\n🔌 Testing Socket.io connection...")
+        print("\nTesting Socket.io connection...")
         
         if not self.token:
-            print("❌ No authentication token")
+            print("No authentication token")
             return False
         
         try:
@@ -138,7 +138,7 @@ class SocketIOTester:
                 'mall_id': str(self.mall_id)
             }
             
-            print(f"🔗 Connecting to {BASE_URL} with Socket.io...")
+            print(f"Connecting to {BASE_URL} with Socket.io...")
             # Construct URL with query parameters
             url = f"{BASE_URL}?token={connect_params['token']}&mall_id={connect_params['mall_id']}"
             self.sio.connect(url, socketio_path='socket.io', wait_timeout=10)
@@ -147,77 +147,77 @@ class SocketIOTester:
             time.sleep(2)
             
             if self.connected:
-                print("✅ Socket.io connection successful!")
+                print("Socket.io connection successful!")
                 return True
             else:
-                print("❌ Socket.io connection failed")
+                print("Socket.io connection failed")
                 return False
                 
         except Exception as e:
-            print(f"❌ Connection error: {str(e)}")
+            print(f"Connection error: {str(e)}")
             return False
     
     def test_room_joining(self):
         """Test joining Socket.io rooms"""
-        print("\n🏠 Testing room joining...")
+        print("\nTesting room joining...")
         
         if not self.connected:
-            print("❌ Not connected to Socket.io")
+            print("Not connected to Socket.io")
             return False
         
         try:
             # Join mall room
-            print(f"📡 Joining mall room: mall_{self.mall_id}")
+            print(f"Joining mall room: mall_{self.mall_id}")
             self.sio.emit('join_room', {'room': f'mall_{self.mall_id}'})
             time.sleep(1)
             
             # Join system room
-            print("📡 Joining system room")
+            print("Joining system room")
             self.sio.emit('join_room', {'room': 'system'})
             time.sleep(1)
             
-            print("✅ Room joining completed")
+            print("Room joining completed")
             return True
             
         except Exception as e:
-            print(f"❌ Room joining error: {str(e)}")
+            print(f"Room joining error: {str(e)}")
             return False
     
     def test_event_emission(self):
         """Test emitting events to server"""
-        print("\n📡 Testing event emission...")
+        print("\nTesting event emission...")
         
         if not self.connected:
-            print("❌ Not connected to Socket.io")
+            print("Not connected to Socket.io")
             return False
         
         try:
             # Test analytics request
-            print("📊 Requesting analytics via Socket.io...")
+            print("Requesting analytics via Socket.io...")
             self.sio.emit('get_analytics', {'mall_id': self.mall_id})
             time.sleep(1)
             
             # Test status request
-            print("📡 Requesting status via Socket.io...")
+            print("Requesting status via Socket.io...")
             self.sio.emit('get_status', {'mall_id': self.mall_id})
             time.sleep(1)
             
-            print("✅ Event emission completed")
+            print("Event emission completed")
             return True
             
         except Exception as e:
-            print(f"❌ Event emission error: {str(e)}")
+            print(f"Event emission error: {str(e)}")
             return False
     
     def test_real_time_updates(self):
         """Test receiving real-time updates"""
-        print("\n⏰ Testing real-time updates...")
+        print("\nTesting real-time updates...")
         
         if not self.connected:
-            print("❌ Not connected to Socket.io")
+            print("Not connected to Socket.io")
             return False
         
-        print("⏳ Listening for real-time updates for 15 seconds...")
+        print("Listening for real-time updates for 15 seconds...")
         
         initial_events = len(self.events_received)
         start_time = time.time()
@@ -229,7 +229,7 @@ class SocketIOTester:
         final_events = len(self.events_received)
         events_received = final_events - initial_events
         
-        print(f"✅ Real-time test completed")
+        print(f"Real-time test completed")
         print(f"   Duration: {end_time - start_time:.1f} seconds")
         print(f"   Events received: {events_received}")
         
@@ -247,7 +247,7 @@ class SocketIOTester:
     
     def test_authentication_failure(self):
         """Test Socket.io with invalid authentication"""
-        print("\n🚫 Testing authentication failure...")
+        print("\nTesting authentication failure...")
         
         try:
             # Create new client for bad auth test
@@ -255,11 +255,11 @@ class SocketIOTester:
             
             @bad_sio.event
             def connect():
-                print("❌ Bad auth connected (should not happen)")
+                print("Bad auth connected (should not happen)")
             
             @bad_sio.event
             def connect_error(data):
-                print("✅ Authentication failure detected correctly")
+                print("Authentication failure detected correctly")
                 print(f"   Error: {data}")
             
             # Try to connect with bad token
@@ -272,13 +272,13 @@ class SocketIOTester:
             return True
             
         except Exception as e:
-            print(f"✅ Authentication properly rejected: {str(e)}")
+            print(f"Authentication properly rejected: {str(e)}")
             return True
     
     def run_all_tests(self):
         """Run complete Socket.io test suite"""
-        print("🚀 STARTING SOCKET.IO TEST SUITE")
-        print(f"⏰ Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("STARTING SOCKET.IO TEST SUITE")
+        print(f"Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         results = {}
         
@@ -310,25 +310,25 @@ class SocketIOTester:
         
         # Print Results
         print("\n" + "="*60)
-        print("🎯 SOCKET.IO TEST RESULTS")
+        print("SOCKET.IO TEST RESULTS")
         print("="*60)
         
         total_tests = len(results)
         passed_tests = sum(1 for result in results.values() if result)
         
         for test_name, result in results.items():
-            status = "✅ PASSED" if result else "❌ FAILED"
+            status = "PASSED" if result else "FAILED"
             print(f"{status} - {test_name.replace('_', ' ').title()}")
         
-        print(f"\n📊 SUMMARY: {passed_tests}/{total_tests} tests passed")
-        print(f"📡 Total events received: {len(self.events_received)}")
+        print(f"\nSUMMARY: {passed_tests}/{total_tests} tests passed")
+        print(f"Total events received: {len(self.events_received)}")
         
         if passed_tests == total_tests:
-            print("🎉 ALL SOCKET.IO TESTS PASSED!")
+            print("ALL SOCKET.IO TESTS PASSED!")
         else:
-            print(f"⚠️  {total_tests - passed_tests} tests failed")
+            print(f" {total_tests - passed_tests} tests failed")
         
-        print(f"⏰ End Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"End Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
 if __name__ == "__main__":
     tester = SocketIOTester()

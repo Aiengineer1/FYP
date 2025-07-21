@@ -205,7 +205,6 @@ class WebSocketManager:
                 "confidence": detection.get("confidence", 0.0),
                 "age": detection.get("age", 0),
                 "gender": "Male" if detection.get("gender") == "male" else "Female",
-                "has_trolley": detection.get("has_trolley", False),
                 "timestamp": datetime.utcnow().isoformat()
             })
         

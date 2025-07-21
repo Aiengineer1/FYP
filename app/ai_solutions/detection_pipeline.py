@@ -4,7 +4,6 @@ Detection Pipeline for Mall Analytics System
 This module integrates all AI detection components:
 - Person detection (YOLOv11n)
 - Age/Gender estimation
-- Trolley detection
 - Custom tracking
 - Homography mapping
 """
@@ -21,14 +20,12 @@ import numpy as np
 try:
     from .modules.person_detection import PersonDetector
     from .modules.age_gender import AgeGenderEstimator
-    from .modules.trolley_detection import TrolleyDetector
     from .modules.tracking import CustomTracker
     from .modules.homography import HomographyMapper
 except ImportError:
     # Fallback classes until Saim's modules are ready
     PersonDetector = None
     AgeGenderEstimator = None
-    TrolleyDetector = None
     CustomTracker = None
     HomographyMapper = None
 
@@ -44,7 +41,7 @@ class DetectionResult:
         self.detections: List[Dict] = []
     
     def add_detection(self, person_id: str, bbox: List[float], age: int, 
-                     gender: str, has_trolley: bool, zone: str, 
+                     gender: str, zone: str, 
                      world_coords: List[float], confidence: float = 0.95):
         """Add a detection to the result"""
         detection = {
@@ -53,7 +50,6 @@ class DetectionResult:
             "confidence": confidence,
             "age": age,
             "gender": gender,
-            "has_trolley": has_trolley,
             "zone": zone,
             "world_coords": world_coords  # [x_mall, y_mall]
         }
@@ -104,12 +100,6 @@ class MockDetectionModules:
             age = random.randint(18, 65)
             gender = random.choice(["male", "female"])
             return age, gender
-    
-    class MockTrolleyDetector:
-        def detect(self, bbox: List[float], frame: np.ndarray) -> bool:
-            """Mock trolley detection"""
-            import random
-            return random.choice([True, False])
     
     class MockCustomTracker:
         def __init__(self):
@@ -174,7 +164,6 @@ class DetectionPipeline:
             # Use Saim's actual modules
             self.person_detector = PersonDetector()
             self.age_gender_estimator = AgeGenderEstimator()
-            self.trolley_detector = TrolleyDetector()
             self.tracker = CustomTracker()
             self.homography_mapper = HomographyMapper(self.camera_id)
             logger.info("Using Saim's AI modules")
@@ -183,7 +172,6 @@ class DetectionPipeline:
             mock = MockDetectionModules()
             self.person_detector = mock.MockPersonDetector()
             self.age_gender_estimator = mock.MockAgeGenderEstimator()
-            self.trolley_detector = mock.MockTrolleyDetector()
             self.tracker = mock.MockCustomTracker()
             self.homography_mapper = mock.MockHomographyMapper(self.camera_id)
             logger.info("Using mock AI modules for development")
@@ -228,10 +216,7 @@ class DetectionPipeline:
                 # Step 4: Age/Gender Estimation
                 age, gender = self.age_gender_estimator.estimate(person_crop)
                 
-                # Step 5: Trolley Detection
-                has_trolley = self.trolley_detector.detect(bbox, frame)
-                
-                # Step 6: Homography Mapping
+                # Step 5: Homography Mapping
                 world_coords = self.homography_mapper.map_to_world_coords(bbox)
                 zone = self.homography_mapper.get_zone(world_coords)
                 
@@ -241,7 +226,6 @@ class DetectionPipeline:
                     bbox=bbox,
                     age=age,
                     gender=gender,
-                    has_trolley=has_trolley,
                     zone=zone,
                     world_coords=world_coords,
                     confidence=detection.get("confidence", 0.95)
@@ -264,7 +248,6 @@ class DetectionPipeline:
             "modules": {
                 "person_detector": "active",
                 "age_gender_estimator": "active", 
-                "trolley_detector": "active",
                 "tracker": "active",
                 "homography_mapper": "active"
             }

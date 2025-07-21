@@ -46,7 +46,6 @@ class AnalyticsEngine:
                 "total_visitors": self._get_total_visitors(mall_id, last_24h),
                 "active_visitors": self._get_active_visitors(mall_id),
                 "average_dwell_time": self._get_average_dwell_time(mall_id, last_24h),
-                "trolley_percentage": self._get_trolley_percentage(mall_id, last_24h),
                 "gender_distribution": self._get_gender_distribution(mall_id, last_24h),
                 "age_distribution": self._get_age_distribution(mall_id, last_24h),
                 "zone_popularity": self._get_zone_popularity(mall_id, last_hour),
@@ -134,32 +133,6 @@ class AnalyticsEngine:
         except Exception as e:
             logger.error(f"Error calculating average dwell time: {str(e)}")
             return 25.5  # Fallback
-    
-    def _get_trolley_percentage(self, mall_id: int, since: datetime) -> float:
-        """Calculate percentage of visitors using trolleys"""
-        try:
-            query = text("""
-                SELECT 
-                    COUNT(CASE WHEN trolley_id IS NOT NULL THEN 1 END) * 100.0 / 
-                    NULLIF(COUNT(*), 0) as trolley_percentage
-                FROM customers 
-                WHERE mall_id = :mall_id 
-                AND entry_time >= :since
-            """)
-            
-            result = self.db.execute(query, {"mall_id": mall_id, "since": since})
-            percentage = result.scalar()
-            
-            if percentage is None:
-                # Mock data
-                import random
-                percentage = random.uniform(60.0, 80.0)
-            
-            return round(float(percentage), 1)
-            
-        except Exception as e:
-            logger.error(f"Error calculating trolley percentage: {str(e)}")
-            return 68.5  # Fallback
     
     def _get_gender_distribution(self, mall_id: int, since: datetime) -> Dict[str, float]:
         """Get gender distribution percentages"""
@@ -395,7 +368,6 @@ class AnalyticsEngine:
             "total_visitors": random.randint(20, 50),
             "active_visitors": random.randint(5, 15),
             "average_dwell_time": round(random.uniform(15.0, 45.0), 1),
-            "trolley_percentage": round(random.uniform(60.0, 80.0), 1),
             "gender_distribution": {"male": 55.0, "female": 45.0},
             "age_distribution": {
                 "18-25": 25.0,
@@ -501,9 +473,7 @@ class AnalyticsEngine:
                 "genderDistribution": raw_metrics.get("gender_distribution", {"male": 50.0, "female": 50.0})
             },
             "conversionMetrics": {
-                "browsersToShoppers": raw_metrics.get("trolley_percentage", 0),
                 "averageDwellTime": int(raw_metrics.get("average_dwell_time", 0) * 60),  # Convert to seconds
-                "trolleyUsageRate": raw_metrics.get("trolley_percentage", 0)
             },
             "hourlyTraffic": [
                 {"time": item["hour"], "visitors": item["visitors"]} 

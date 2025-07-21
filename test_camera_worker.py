@@ -32,7 +32,7 @@ class CameraWorkerTester:
 
     def setup_test_data(self):
         """Setup required test data (user, mall, camera)"""
-        print("🔧 Setting up test data...")
+        print("Setting up test data...")
         
         # Login/signup
         if not self.login_or_signup():
@@ -46,7 +46,7 @@ class CameraWorkerTester:
         if not self.create_test_camera():
             return False
             
-        print("✅ Test data setup complete")
+        print("Test data setup complete")
         return True
 
     def login_or_signup(self):
@@ -64,7 +64,7 @@ class CameraWorkerTester:
                 data = response.json()
                 self.token = data.get("access_token")
                 self.user_id = data.get("user_id")
-                print(f"✅ Login successful - User ID: {self.user_id}")
+                print(f"Login successful - User ID: {self.user_id}")
                 return True
             else:
                 # Try signup
@@ -83,14 +83,14 @@ class CameraWorkerTester:
                         data = response.json()
                         self.token = data.get("access_token")
                         self.user_id = data.get("user_id")
-                        print(f"✅ Signup and login successful - User ID: {self.user_id}")
+                        print(f"Signup and login successful - User ID: {self.user_id}")
                         return True
                 
-                print("❌ Failed to login or signup")
+                print("Failed to login or signup")
                 return False
                 
         except Exception as e:
-            print(f"❌ Login/signup error: {str(e)}")
+            print(f"Login/signup error: {str(e)}")
             return False
 
     def create_test_mall(self):
@@ -123,14 +123,14 @@ class CameraWorkerTester:
             if response.status_code in [200, 201]:
                 mall_data = response.json()
                 self.mall_id = mall_data.get("id")
-                print(f"✅ Mall created - Mall ID: {self.mall_id}")
+                print(f"Mall created - Mall ID: {self.mall_id}")
                 return True
             else:
-                print(f"❌ Mall creation failed: {response.status_code} - {response.text}")
+                print(f"Mall creation failed: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Mall creation error: {str(e)}")
+            print(f"Mall creation error: {str(e)}")
             return False
 
     def create_test_camera(self):
@@ -152,14 +152,14 @@ class CameraWorkerTester:
             if response.status_code in [200, 201]:
                 camera_response = response.json()
                 self.camera_id = camera_response.get("id")
-                print(f"✅ Camera created - Camera ID: {self.camera_id}")
+                print(f"Camera created - Camera ID: {self.camera_id}")
                 return True
             else:
-                print(f"❌ Camera creation failed: {response.status_code} - {response.text}")
+                print(f"Camera creation failed: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Camera creation error: {str(e)}")
+            print(f"Camera creation error: {str(e)}")
             return False
 
     def test_camera_creation_and_management(self):
@@ -172,14 +172,14 @@ class CameraWorkerTester:
             
             if response.status_code == 200:
                 camera_data = response.json()
-                print(f"✅ Camera details retrieved - Name: {camera_data.get('name')}")
+                print(f"Camera details retrieved - Name: {camera_data.get('name')}")
                 return True
             else:
-                print(f"❌ Camera details failed: {response.status_code}")
+                print(f"Camera details failed: {response.status_code}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Camera management error: {str(e)}")
+            print(f"Camera management error: {str(e)}")
             return False
 
     def test_detection_pipeline(self):
@@ -191,14 +191,14 @@ class CameraWorkerTester:
             response = requests.post(f"{self.base_url}/analytics/camera/{self.camera_id}/start", headers=headers)
             
             if response.status_code == 200:
-                print("✅ Detection pipeline start successful")
+                print("Detection pipeline start successful")
                 return True
             else:
-                print(f"❌ Detection pipeline start failed: {response.status_code} - {response.text}")
+                print(f"Detection pipeline start failed: {response.status_code} - {response.text}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Detection pipeline error: {str(e)}")
+            print(f"Detection pipeline error: {str(e)}")
             return False
 
     def test_analytics_engine(self):
@@ -211,14 +211,14 @@ class CameraWorkerTester:
             
             if response.status_code == 200:
                 analytics_data = response.json()
-                print("✅ Analytics engine test successful")
+                print("Analytics engine test successful")
                 return True
             else:
-                print(f"❌ Analytics engine test failed: {response.status_code}")
+                print(f"Analytics engine test failed: {response.status_code}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Analytics engine error: {str(e)}")
+            print(f"Analytics engine error: {str(e)}")
             return False
 
     def test_frame_endpoint(self):
@@ -237,17 +237,17 @@ class CameraWorkerTester:
             response = requests.post(f"{self.base_url}/camera/frame", json=frame_request, headers=headers)
             
             if response.status_code == 200 and response.headers.get('content-type') == 'image/jpeg':
-                print("✅ Frame endpoint test successful")
+                print("Frame endpoint test successful")
                 return True
             elif response.status_code == 404:
-                print("✅ Frame endpoint responding correctly (camera not available)")
+                print("Frame endpoint responding correctly (camera not available)")
                 return True
             else:
-                print(f"❌ Frame endpoint test failed: {response.status_code}")
+                print(f"Frame endpoint test failed: {response.status_code}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Frame endpoint error: {str(e)}")
+            print(f"Frame endpoint error: {str(e)}")
             return False
 
     def test_stream_endpoint(self):
@@ -259,20 +259,20 @@ class CameraWorkerTester:
             response = requests.get(f"{self.base_url}/{self.camera_id}/stream", headers=headers, stream=True, timeout=5)
             
             if response.status_code == 200:
-                print("✅ Stream endpoint test successful")
+                print("Stream endpoint test successful")
                 return True
             elif response.status_code == 500:
-                print("✅ Stream endpoint responding correctly (camera not available)")
+                print("Stream endpoint responding correctly (camera not available)")
                 return True
             else:
-                print(f"❌ Stream endpoint test failed: {response.status_code}")
+                print(f"Stream endpoint test failed: {response.status_code}")
                 return False
                 
         except requests.exceptions.Timeout:
-            print("✅ Stream endpoint responding (timeout expected)")
+            print("Stream endpoint responding (timeout expected)")
             return True
         except Exception as e:
-            print(f"❌ Stream endpoint error: {str(e)}")
+            print(f"Stream endpoint error: {str(e)}")
             return False
 
     def test_camera_start_stop_controls(self):
@@ -284,7 +284,7 @@ class CameraWorkerTester:
             start_response = requests.post(f"{self.base_url}/analytics/camera/{self.camera_id}/start", headers=headers)
             
             if start_response.status_code == 200:
-                print("✅ Camera start control successful")
+                print("Camera start control successful")
                 
                 # Wait a moment
                 time.sleep(2)
@@ -293,26 +293,26 @@ class CameraWorkerTester:
                 stop_response = requests.post(f"{self.base_url}/analytics/camera/{self.camera_id}/stop", headers=headers)
                 
                 if stop_response.status_code == 200:
-                    print("✅ Camera stop control successful")
+                    print("Camera stop control successful")
                     return True
                 else:
-                    print(f"❌ Camera stop failed: {stop_response.status_code}")
+                    print(f"Camera stop failed: {stop_response.status_code}")
                     return False
             else:
-                print(f"❌ Camera start failed: {start_response.status_code}")
+                print(f"Camera start failed: {start_response.status_code}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Camera controls error: {str(e)}")
+            print(f"Camera controls error: {str(e)}")
             return False
 
     def run_all_tests(self):
         """Run all camera worker tests"""
-        print("🚀 Starting Camera Worker Test Suite\n")
+        print("Starting Camera Worker Test Suite\n")
         
         # Setup test data first
         if not self.setup_test_data():
-            print("❌ Failed to setup test data")
+            print("Failed to setup test data")
             return False
         
         tests = [
@@ -333,12 +333,12 @@ class CameraWorkerTester:
                 passed += 1
             time.sleep(1)  # Small delay between tests
         
-        print(f"\n🎯 Test Results: {passed}/{total} tests passed")
+        print(f"\nTest Results: {passed}/{total} tests passed")
         
         if passed == total:
-            print("🎉 All camera worker tests passed!")
+            print("All camera worker tests passed!")
         else:
-            print(f"⚠️  {total - passed} tests failed")
+            print(f" {total - passed} tests failed")
         
         return passed == total
 

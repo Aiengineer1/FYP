@@ -26,9 +26,9 @@ class IDManagementTester:
         
     def print_status(self, message, status="INFO"):
         """Print formatted status messages"""
-        symbols = {"SUCCESS": "✅", "FAILED": "❌", "INFO": "ℹ️", "TESTING": "🔄"}
+        symbols = {"SUCCESS": "OK", "FAILED": "ERROR", "INFO": "INFO", "TESTING": "TESTING"}
         timestamp = datetime.now().strftime('%H:%M:%S')
-        print(f"[{timestamp}] {symbols.get(status, 'ℹ️')} {message}")
+        print(f"[{timestamp}] {symbols.get(status, 'INFO')} {message}")
     
     def authenticate(self):
         """Get authentication token"""
@@ -127,7 +127,7 @@ class IDManagementTester:
     
     def show_statistics(self, title="Current Statistics"):
         """Display ID statistics"""
-        print(f"\n📊 {title}")
+        print(f"\n{title}")
         print("=" * 60)
         
         stats = self.get_id_statistics()
@@ -135,7 +135,7 @@ class IDManagementTester:
             data = stats.get("data", {})
             summary = stats.get("summary", {})
             
-            print(f"📈 Summary:")
+            print(f"Summary:")
             print(f"   Total Models: {summary.get('total_models')}")
             print(f"   Models with Gaps: {summary.get('models_with_gaps')}")
             print(f"   Total Gaps: {summary.get('total_gaps')}")
@@ -144,7 +144,7 @@ class IDManagementTester:
             # Show user statistics in detail
             user_stats = data.get("user", {})
             if user_stats:
-                print(f"\n👥 User Statistics:")
+                print(f"\nUser Statistics:")
                 print(f"   Total Records: {user_stats.get('total_records')}")
                 print(f"   ID Range: {user_stats.get('min_id')} - {user_stats.get('max_id')}")
                 print(f"   Gaps: {user_stats.get('gaps', [])}")
@@ -155,23 +155,23 @@ class IDManagementTester:
         next_ids = self.get_next_available_ids()
         if next_ids and next_ids.get("success"):
             data = next_ids.get("data", {})
-            print(f"\n🆔 Next Available IDs:")
+            print(f"\nNext Available IDs:")
             for model, next_id in data.items():
                 print(f"   {model.capitalize()}: {next_id}")
     
     def demonstrate_scenario(self):
         """Demonstrate the ID management scenario described by the user"""
-        print("🎯 ID MANAGEMENT DEMONSTRATION")
+        print("ID MANAGEMENT DEMONSTRATION")
         print("=" * 70)
         print("Scenario: User wants gaps to be filled when creating new records")
         print("Expected: If user ID 20 is deleted, next new user gets ID 20")
         print("=" * 70)
         
         # Step 1: Show initial state
-        self.show_statistics("📋 Initial State")
+        self.show_statistics("Initial State")
         
         # Step 2: Create several test users
-        print(f"\n🔄 Step 1: Creating 5 test users...")
+        print(f"\nStep 1: Creating 5 test users...")
         new_user_ids = []
         for i in range(1, 6):
             user_id = self.create_test_user(f"Demo{i}")
@@ -179,21 +179,21 @@ class IDManagementTester:
                 new_user_ids.append(user_id)
         
         time.sleep(1)
-        self.show_statistics("📋 After Creating 5 Users")
+        self.show_statistics("After Creating 5 Users")
         
         # Step 3: Delete some users to create gaps
         if len(new_user_ids) >= 3:
-            print(f"\n🔄 Step 2: Deleting users to create gaps...")
+            print(f"\nStep 2: Deleting users to create gaps...")
             # Delete the 2nd and 4th users to create gaps
             users_to_delete = [new_user_ids[1], new_user_ids[3]]
             for user_id in users_to_delete:
                 self.delete_user(user_id)
         
         time.sleep(1)
-        self.show_statistics("📋 After Deleting Users (Created Gaps)")
+        self.show_statistics("After Deleting Users (Created Gaps)")
         
         # Step 4: Create new users and show they fill gaps
-        print(f"\n🔄 Step 3: Creating new users to fill gaps...")
+        print(f"\nStep 3: Creating new users to fill gaps...")
         gap_fill_users = []
         for i in range(1, 4):
             user_id = self.create_test_user(f"GapFill{i}")
@@ -201,41 +201,41 @@ class IDManagementTester:
                 gap_fill_users.append(user_id)
         
         time.sleep(1)
-        self.show_statistics("📋 After Creating Gap-Fill Users")
+        self.show_statistics("After Creating Gap-Fill Users")
         
         # Step 5: Show the demonstration results
-        print(f"\n🎉 Demonstration Results:")
-        print(f"✅ New users filled the gaps created by deletions")
-        print(f"✅ ID sequence remains clean and efficient")
-        print(f"✅ No gaps in the final sequence")
-        print(f"✅ System reuses deleted IDs as expected")
+        print(f"\nDemonstration Results:")
+        print(f"OK New users filled the gaps created by deletions")
+        print(f"OK ID sequence remains clean and efficient")
+        print(f"OK No gaps in the final sequence")
+        print(f"OK System reuses deleted IDs as expected")
         
         return True
     
     def run_demonstration(self):
         """Run the complete ID management demonstration"""
-        print("🚀 ID MANAGEMENT SYSTEM DEMONSTRATION")
-        print(f"⏰ Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("ID MANAGEMENT SYSTEM DEMONSTRATION")
+        print(f"Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 70)
         
         # Step 1: Authenticate
         if not self.authenticate():
-            print("❌ Authentication failed - cannot proceed")
+            print("ERROR Authentication failed - cannot proceed")
             return False
         
         # Step 2: Run the scenario demonstration
         success = self.demonstrate_scenario()
         
         # Step 3: Show API endpoints available
-        print(f"\n🔗 Available ID Management API Endpoints:")
+        print(f"\nAvailable ID Management API Endpoints:")
         print(f"   GET  /id-management/statistics")
         print(f"   GET  /id-management/next-available")
         print(f"   GET  /id-management/statistics/{{model_name}}")
         print(f"   POST /id-management/reset-sequence/{{model_name}}")
         print(f"   GET  /id-management/demo/scenario")
         
-        print(f"\n🎯 Final Result: {'✅ SUCCESS' if success else '❌ FAILED'}")
-        print(f"⏰ End Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"\nFinal Result: {'OK SUCCESS' if success else 'ERROR FAILED'}")
+        print(f"End Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         return success
 

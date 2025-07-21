@@ -176,8 +176,6 @@ class CameraWorker:
                         "mall_id": self.mall_id,
                         "age": detection["age"],
                         "gender": detection["gender"],
-                        "trolley_id": detection["person_id"] if detection["has_trolley"] else None,
-                        "trolley_sub_id": detection["person_id"],
                         "routes": [detection["zone"]],
                         "visited_zones": [detection["zone"]],
                         "entry_time": datetime.utcnow()

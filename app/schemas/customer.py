@@ -7,8 +7,6 @@ class CustomerBase(BaseModel):
     gender: str
     entry_time: datetime
     exit_time: Optional[datetime]
-    trolley_id: Optional[str]
-    trolley_sub_id: Optional[str]
     routes: dict
     interactions: dict
     visited_zones: List[str]

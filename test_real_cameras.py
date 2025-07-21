@@ -39,8 +39,8 @@ class RealCameraTester:
         return buffer
     
     def print_status(self, message, status="INFO"):
-        symbols = {"SUCCESS": "✅", "FAILED": "❌", "INFO": "ℹ️", "TESTING": "🔄"}
-        print(f"{symbols.get(status, 'ℹ️')} {message}")
+        symbols = {"SUCCESS": "OK", "FAILED": "FAIL", "INFO": "INFO", "TESTING": "TESTING"}
+        print(f"{symbols.get(status, 'INFO')} {message}")
     
     def setup_authentication(self):
         """Setup authentication"""

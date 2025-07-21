@@ -91,7 +91,6 @@ async def root():
         "features": [
             "Real-time person detection and tracking",
             "Age and gender estimation",
-            "Trolley detection and tracking",
             "Zone-based analytics",
             "Live WebSocket updates",
             "Comprehensive dashboard analytics"

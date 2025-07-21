@@ -20,9 +20,9 @@ def check_server_running():
 
 def run_test_suite(test_file, test_name):
     """Run a specific test suite"""
-    print(f"\n{'='*80}")
-    print(f"🧪 RUNNING {test_name.upper()}")
-    print(f"{'='*80}")
+    print("="*80)
+    print("RUNNING " + test_name.upper())
+    print("="*80)
     
     try:
         result = subprocess.run([sys.executable, test_file], 
@@ -43,7 +43,7 @@ def run_test_suite(test_file, test_name):
 
 def main():
     """Main test runner"""
-    print("🎯 BACKEND COMPREHENSIVE TEST SUITE")
+    print("BACKEND COMPREHENSIVE TEST SUITE")
     print(f"⏰ Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*80)
     
@@ -85,7 +85,7 @@ def main():
     
     # Final Results Summary
     print(f"\n{'='*80}")
-    print("🎯 COMPREHENSIVE TEST RESULTS SUMMARY")
+    print("COMPREHENSIVE TEST RESULTS SUMMARY")
     print(f"{'='*80}")
     
     total_suites = len(results)

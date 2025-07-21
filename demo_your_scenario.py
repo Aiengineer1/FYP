@@ -39,7 +39,7 @@ def get_stats(token):
         return response.json()["data"]["user"]
     return None
 
-print("🎯 DEMONSTRATING YOUR EXACT SCENARIO")
+print("DEMONSTRATING YOUR EXACT SCENARIO")
 print("=" * 50)
 print("Scenario: Fill gaps when users are deleted")
 print("=" * 50)

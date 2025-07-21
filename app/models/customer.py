@@ -12,8 +12,6 @@ class Customer(Base):
     gender = Column(String, nullable=True)
     entry_time = Column(DateTime, default=datetime.utcnow)
     exit_time = Column(DateTime, nullable=True)
-    trolley_id = Column(String, nullable=True)
-    trolley_sub_id = Column(String, nullable=True)
     routes = Column(JSON, nullable=True)
     interactions = Column(JSON, nullable=True)
     visited_zones = Column(JSON, nullable=True)

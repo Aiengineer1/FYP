@@ -9,7 +9,7 @@ This module provides comprehensive analytics endpoints:
 - WebSocket support
 """
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
@@ -19,6 +19,7 @@ from ..dependencies import get_current_user
 from ..ai_solutions.analytics_engine import AnalyticsEngine
 from ..ai_solutions.websocket_manager import websocket_manager
 from ..ai_solutions.camera_worker import camera_worker_manager
+from ..ai_solutions.modules.person_tracking import PersonTracker
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,11 @@ router = APIRouter(
     prefix="/analytics",
     tags=["analytics"]
 )
+
+# Default RTSP URL for the current camera
+DEFAULT_RTSP_URL = "rtsp://admin:admin1234@192.168.0.2:554/cam/realmonitor?channel=1&subtype=0"
+
+tracker_instance = None
 
 @router.get("/mall/{mall_id}")
 async def get_mall_analytics(

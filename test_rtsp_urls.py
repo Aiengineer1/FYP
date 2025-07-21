@@ -13,14 +13,14 @@ def test_rtsp_url(ip_address, username="admin", password="admin1234"):
     # Standard RTSP URL format used in your app
     rtsp_url = f"rtsp://{username}:{password}@{ip_address}:554/cam/realmonitor?channel=1&subtype=0"
     
-    print(f"🔄 Testing: {rtsp_url}")
+    print(f"Testing: {rtsp_url}")
     
     try:
         # Try to connect to RTSP stream
         cap = cv2.VideoCapture(rtsp_url)
         
         if not cap.isOpened():
-            print(f"❌ Failed to connect to {ip_address}")
+            print(f"Failed to connect to {ip_address}")
             return False
         
         # Try to read a frame
@@ -28,16 +28,16 @@ def test_rtsp_url(ip_address, username="admin", password="admin1234"):
         
         if ret and frame is not None:
             height, width = frame.shape[:2]
-            print(f"✅ Success! Camera {ip_address} - Frame size: {width}x{height}")
+            print(f"Success! Camera {ip_address} - Frame size: {width}x{height}")
             cap.release()
             return True
         else:
-            print(f"❌ Connected but no frame from {ip_address}")
+            print(f"Connected but no frame from {ip_address}")
             cap.release()
             return False
             
     except Exception as e:
-        print(f"❌ Error testing {ip_address}: {str(e)}")
+        print(f"Error testing {ip_address}: {str(e)}")
         return False
 
 def test_alternative_rtsp_paths(ip_address, username="admin", password="admin1234"):
@@ -53,7 +53,7 @@ def test_alternative_rtsp_paths(ip_address, username="admin", password="admin123
         "/mjpeg",                               # MJPEG stream
     ]
     
-    print(f"\n🔍 Testing alternative RTSP paths for {ip_address}:")
+    print(f"\nTesting alternative RTSP paths for {ip_address}:")
     
     for path in alternative_paths:
         rtsp_url = f"rtsp://{username}:{password}@{ip_address}:554{path}"
@@ -76,7 +76,7 @@ def test_alternative_rtsp_paths(ip_address, username="admin", password="admin123
     return None
 
 def main():
-    print("🚀 RTSP URL Testing for Your 4 Cameras")
+    print("RTSP URL Testing for Your 4 Cameras")
     print("=" * 50)
     print("Camera IPs: 192.68.0.2, 192.68.0.3, 192.68.0.4, 192.68.0.5")
     print("Username: admin, Password: admin1234")
@@ -105,7 +105,7 @@ def main():
         time.sleep(1)  # Small delay between tests
     
     print(f"\n{'=' * 50}")
-    print("🎯 RTSP Testing Results:")
+    print("RTSP Testing Results:")
     print(f"✅ Working cameras: {len(successful_cameras)}/{len(camera_ips)}")
     print(f"❌ Failed cameras: {len(failed_cameras)}/{len(camera_ips)}")
     
