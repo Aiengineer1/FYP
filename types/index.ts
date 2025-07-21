@@ -68,7 +68,6 @@ export interface DetectionEvent {
   person_id: string
   age: number
   gender: 'male' | 'female'
-  has_trolley: boolean
   zone: string
   confidence: number
   bbox: [number, number, number, number]
@@ -134,8 +133,6 @@ export interface VisitorStats {
   total: number
   male: number
   female: number
-  withTrolley: number
-  withoutTrolley: number
   averageAge: number
   ageGroups: {
     '18-25': number

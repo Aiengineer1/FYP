@@ -55,12 +55,6 @@ function DetectionOverlay({ detection, imageWidth, imageHeight }: DetectionOverl
                     <User className="w-3 h-3 mr-1" />
                     {detection.age}y {detection.gender}
                 </Badge>
-                {detection.has_trolley && (
-                    <Badge variant="outline" className="text-xs bg-green-500 text-white">
-                        <ShoppingCart className="w-3 h-3 mr-1" />
-                        Cart
-                    </Badge>
-                )}
             </div>
 
             {/* Confidence indicator */}
@@ -218,8 +212,6 @@ export function EnhancedCameraStream({
 
     // Analytics calculations
     const activeDetections = detections.length
-    const cartUsers = detections.filter(d => d.has_trolley).length
-    const cartPercentage = activeDetections > 0 ? Math.round((cartUsers / activeDetections) * 100) : 0
 
     return (
         <Card className="overflow-hidden">
@@ -235,12 +227,6 @@ export function EnhancedCameraStream({
                                 <Users className="w-3 h-3" />
                                 {activeDetections}
                             </Badge>
-                            {cartUsers > 0 && (
-                                <Badge variant="secondary" className="flex items-center gap-1">
-                                    <ShoppingCart className="w-3 h-3" />
-                                    {cartPercentage}%
-                                </Badge>
-                            )}
                         </div>
                     )}
                 </div>

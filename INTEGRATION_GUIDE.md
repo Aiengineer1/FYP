@@ -1,236 +1,327 @@
-# 🚀 InsightCart Frontend-Backend Integration Guide
+# 📚 InsightCart Backend API: Frontend Integration Guide
 
-## 🎯 Perfect Integration Achieved!
+---
 
-Your frontend architecture now **perfectly matches** your backend implementation. This guide will help you complete the integration seamlessly.
+## 1. **Authentication & User Management (`/auth`)**
 
-## 📋 Quick Start Checklist
+### **POST /auth/signup**
+- **Purpose:** Register a new user.
+- **Body:**  
+  `{ "email": "...", "password": "...", "name": "..." }`
+- **Response:**  
+  `{ "id": 1, "email": "...", "name": "...", ... }`
+- **Frontend:** Use for user registration.
 
-### 1. **Environment Setup**
+---
 
-Create a `.env.local` file in your frontend root:
+### **POST /auth/login**
+- **Purpose:** User login.
+- **Body:**  
+  `{ "email": "...", "password": "..." }`
+- **Response:**  
+  `{ "access_token": "...", "user_id": 1, "name": "...", "email": "...", "mall_id": ... }`
+- **Frontend:** Save `access_token` for authenticated requests.
 
-```bash
-# API Configuration
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_WEBSOCKET_URL=http://localhost:8000
+---
 
-# Feature Flags
-NEXT_PUBLIC_ENABLE_REALTIME_UPDATES=true
-NEXT_PUBLIC_ENABLE_NOTIFICATIONS=true
-NEXT_PUBLIC_ENABLE_DETECTION_OVERLAYS=true
-NEXT_PUBLIC_SHOW_PERFORMANCE_METRICS=true
-NEXT_PUBLIC_DEBUG_MODE=true
-```
+### **GET /auth/verify**
+- **Purpose:** Verify JWT token.
+- **Headers:**  
+  `Authorization: Bearer <token>`
+- **Response:**  
+  `{ "valid": true, "user": { ... } }`
+- **Frontend:** Use to check if user is logged in.
 
-### 2. **Backend Verification**
+---
 
-Ensure your backend is running:
-```bash
-cd your-backend-directory
-python run.py
-```
+### **GET /auth/check-mall/{user_id}**
+- **Purpose:** Check if user has a mall.
+- **Frontend:** Use after login to check mall status.
 
-Your backend should be available at: `http://localhost:8000`
+---
 
-### 3. **Test Integration**
+### **GET /auth/user/me**
+- **Purpose:** Get current user profile.
+- **Headers:**  
+  `Authorization: Bearer <token>`
+- **Frontend:** Use to show user profile.
 
-1. Start your frontend: `npm run dev`
-2. Login to your application
-3. Navigate to **"Test Backend"** in the navbar
-4. Click **"Run Tests"** to verify all connections
+---
 
-## 🔌 **WebSocket Integration Status**
+### **PUT /auth/user/update**
+- **Purpose:** Update user profile.
+- **Body:**  
+  `{ "name": "...", "password": "...", ... }`
+- **Frontend:** Use for profile update.
 
-### ✅ **Implemented & Ready**
+---
 
-| Frontend Component | Backend Endpoint | Status |
-|-------------------|------------------|---------|
-| **Mall Analytics** | `/analytics/ws/mall/{mall_id}` | ✅ Connected |
-| **Camera Detection** | `/analytics/ws/camera/{camera_id}` | ✅ Connected |
-| **System Notifications** | `/analytics/ws/system` | ✅ Connected |
-| **Real-time Updates** | Auto-refresh every 5s | ✅ Working |
+### **DELETE /auth/user/{user_id}**  
+### **DELETE /auth/account/delete**
+- **Purpose:** Delete user account.
+- **Frontend:** Use for account deletion.
 
-### **Expected WebSocket Events from Backend:**
+---
 
-```javascript
-// 1. Analytics Updates (Mall Room)
-{
-  "type": "analytics_update",
-  "data": {
-    "total_visitors": 45,
-    "active_visitors": 12,
-    "average_dwell_time": 25.5,
-    "trolley_percentage": 68.5,
-    "gender_distribution": {"male": 55.0, "female": 45.0},
-    "zone_popularity": [...],
-    "heatmap_data": [[...]]
-  }
-}
+## 2. **Mall Management (`/mall`)**
 
-// 2. Detection Updates (Camera Room)
-{
-  "type": "detection_update", 
-  "data": {
-    "detections": [
-      {
-        "person_id": "P001",
-        "bbox": [x, y, w, h],
-        "age": 25,
-        "gender": "male",
-        "has_trolley": true,
-        "zone": "electronics",
-        "confidence": 0.95
-      }
-    ]
-  }
-}
+### **POST /mall/create**
+- **Purpose:** Create a new mall.
+- **Form Data:**  
+  - `name` (string)
+  - `address` (string)
+  - `user_id` (int)
+  - `map_image` (file)
+- **Frontend:** Use in admin/setup screens.
 
-// 3. System Messages (System Room)
-{
-  "type": "system_message",
-  "level": "warning|info|error",
-  "message": "Camera 1 offline - connection lost",
-  "timestamp": "2024-06-21T10:30:00Z"
-}
-```
+---
 
-## 🎯 **API Endpoint Mapping**
+### **GET /mall/{mall_id}**
+- **Purpose:** Get mall details.
+- **Frontend:** Use to display mall info.
 
-### ✅ **Perfect Alignment Achieved**
+---
 
-| Frontend Hook | Backend Endpoint | Purpose |
-|---------------|------------------|---------|
-| `useAnalytics(mallId)` | `GET /analytics/mall/{mall_id}` | Mall analytics data |
-| `useRealTimeMetrics(mallId)` | `GET /analytics/mall/{mall_id}/realtime` | Live metrics |
-| `useCameraAnalytics(cameraId)` | `GET /analytics/camera/{camera_id}` | Camera-specific analytics |
-| `apiClient.getSystemStatus()` | `GET /analytics/system/status` | System health |
-| `apiClient.getHeatmapData(mallId)` | `GET /analytics/mall/{mall_id}/heatmap` | Heatmap visualization |
+### **GET /mall/{mall_id}/image**
+- **Purpose:** Get mall map image.
+- **Frontend:** Use to display mall map.
 
-## 🧩 **Component Integration Status**
+---
 
-### **1. Enhanced Camera Stream** ✅
-- **Frontend**: Detection overlays with bounding boxes
-- **Backend**: Real-time detection data via WebSocket
-- **Integration**: Auto-connects to camera-specific WebSocket rooms
+### **PUT /mall/{mall_id}**
+- **Purpose:** Update mall info.
+- **Form Data:**  
+  - Any of: `name`, `address`, `contact_email`, `contact_number`, `map_image`
+- **Frontend:** Use for mall settings.
 
-### **2. Real-time Analytics Dashboard** ✅  
-- **Frontend**: Live updating charts and metrics
-- **Backend**: Mall analytics WebSocket with 5-second updates
-- **Integration**: SWR + WebSocket for optimal performance
+---
 
-### **3. Notification System** ✅
-- **Frontend**: Toast notifications + floating alerts
-- **Backend**: System message WebSocket events
-- **Integration**: Real-time camera status and alert notifications
+### **DELETE /mall/delete-my-mall**  
+### **DELETE /mall/{mall_id}**
+- **Purpose:** Delete mall.
+- **Frontend:** Use for admin panel.
 
-### **4. Performance Monitoring** ✅
-- **Frontend**: API call tracking and render metrics
-- **Backend**: Processing time and FPS metrics in responses
-- **Integration**: Full performance visibility
+---
 
-## 🔧 **Current Integration Features**
+### **POST /mall/{mall_id}/setup**
+- **Purpose:** Setup/configure mall.
+- **Frontend:** Use for initial mall setup.
 
-### **Working Right Now:**
-✅ User authentication and JWT handling  
-✅ Mall and camera management  
-✅ Settings and profile management  
-✅ Error handling and recovery  
-✅ Performance monitoring  
-✅ WebSocket connection management  
+---
 
-### **Ready for Backend Data:**
-🟡 Analytics dashboard (uses mock data, ready for real backend)  
-🟡 Real-time metrics (WebSocket connected, waiting for events)  
-🟡 Detection overlays (components ready, waiting for detection data)  
-🟡 Notifications (system ready, waiting for backend alerts)  
+## 3. **Camera Management (`/camera`)**
 
-### **Integration Steps for Backend Team:**
+### **POST /camera/add_camera**
+- **Purpose:** Add a new camera.
+- **Body:**  
+  `{ "name": "...", "ip_address": "...", "username": "...", "password": "...", "location": "...", "mall_id": ... }`
+- **Frontend:** Use in admin panel.
 
-1. **Start sending WebSocket events** in the expected format
-2. **Implement the analytics endpoints** with the correct data structure
-3. **Send detection data** to camera WebSocket rooms
-4. **Trigger system notifications** for camera status changes
+---
 
-## 🎮 **Testing Your Integration**
+### **GET /camera/{camera_id}**
+- **Purpose:** Get camera details.
+- **Frontend:** Use to show camera info.
 
-### **Immediate Test (3 minutes):**
+---
 
-1. **Start Backend**: `python run.py`
-2. **Start Frontend**: `npm run dev`
-3. **Login**: Use your existing credentials
-4. **Test**: Go to `/integration-test` and click "Run Tests"
+### **GET /camera/mall/{mall_id}/cameras**
+- **Purpose:** List all cameras for a mall.
+- **Frontend:** Use to show/select cameras.
 
-### **Expected Results:**
-- ✅ Backend Health Check
-- ✅ Authentication Verification  
-- 🟡 Analytics APIs (will work when you implement endpoints)
-- ✅ WebSocket Connection
-- 🟡 Real-time Events (will work when you send events)
+---
 
-### **Debug Tools:**
+### **PUT /camera/{camera_id}**
+- **Purpose:** Update camera info.
+- **Body:**  
+  Same as add_camera.
+- **Frontend:** Use for camera settings.
 
-Open browser console to see:
-```javascript
-// WebSocket connection status
-console.log('WebSocket Status:', socketManager.getConnectionStatus())
+---
 
-// Performance metrics (if enabled)
-console.log('Performance:', performanceMonitor.getStats())
+### **DELETE /camera/{camera_id}**
+- **Purpose:** Delete camera.
+- **Frontend:** Use for camera management.
 
-// API call tracking
-console.log('API Calls:', performanceMonitor.getMetrics('api'))
-```
+---
 
-## 🎯 **Next Steps for Complete Integration**
+### **POST /camera/camera/frame**
+- **Purpose:** Get latest frame from camera.
+- **Body:**  
+  `{ "rtsp_url": "...", "camera_id": ... }`
+- **Frontend:** Use for live preview.
 
-### **For Backend Team (Today):**
+---
 
-1. **Implement Analytics Endpoints:**
-   - `GET /analytics/mall/{mall_id}` 
-   - `GET /analytics/mall/{mall_id}/realtime`
-   - `GET /analytics/system/status`
+### **GET /camera/{camera_id}/stream**  
+### **GET /camera/{camera_id}/live**
+- **Purpose:** Get live camera stream (JPEG/multipart).
+- **Frontend:** Use for live video.
 
-2. **Start WebSocket Events:**
-   - Send analytics updates every 5 seconds to mall rooms
-   - Send system notifications for camera status
-   - Send detection events when Saim's modules are ready
+---
 
-### **For Frontend (You):**
+### **POST /camera/homography/save-mappings**
+- **Purpose:** Save homography mappings for a camera.
+- **Body:**  
+  `{ "camera_id": ..., "zones": [...] }`
+- **Frontend:** Use for mapping setup.
 
-1. **Test the integration** using the test page
-2. **Monitor console logs** for WebSocket events
-3. **Verify API responses** match expected format
-4. **Report any mismatches** to backend team
+---
 
-### **For Saim (When Ready):**
+### **POST /camera/fov/update-zone**
+- **Purpose:** Update FOV zone for a camera.
+- **Body:**  
+  `{ "camera_id": ..., "zone": {...} }`
+- **Frontend:** Use for zone management.
 
-1. **Detection data** will automatically flow to frontend overlays
-2. **Person tracking** will show on camera streams
-3. **Analytics will update** in real-time on dashboard
+---
 
-## 🎊 **Success Metrics**
+### **DELETE /camera/fov/delete-zone/{camera_id}/{zone_name}**
+- **Purpose:** Delete a FOV zone.
+- **Frontend:** Use for zone management.
 
-### **Integration Complete When:**
-- ✅ All integration tests pass
-- ✅ WebSocket events flowing properly
-- ✅ Real-time dashboard updating
-- ✅ Detection overlays showing on camera streams
-- ✅ Notifications working for camera status
+---
 
-### **Performance Targets:**
-- ✅ API calls < 200ms (your backend achieves this)
-- ✅ WebSocket latency < 100ms  
-- ✅ Real-time updates every 5 seconds
-- ✅ Detection overlays with < 1 second delay
+### **GET /camera/camera/{camera_id}/test-mappings**
+- **Purpose:** Test camera mappings (returns diagnostic image).
+- **Frontend:** Use for mapping verification.
 
-## 🚀 **You're Ready!**
+---
 
-Your frontend architecture is **production-ready** and perfectly aligned with your backend implementation. The integration should be seamless once the backend endpoints are implemented!
+## 4. **Analytics & Tracking (`/analytics`)**
 
-### **Contact for Integration Issues:**
-- Frontend architecture questions → This conversation
-- Backend endpoint questions → Your backend team
-- WebSocket connection issues → Check integration test page
+### **GET /analytics/mall/{mall_id}**
+- **Purpose:** Get comprehensive analytics for a mall.
+- **Frontend:** Use for dashboard/analytics.
 
-**Your 21-day timeline is perfectly achievable with this setup!** 🎯 
+---
+
+### **GET /analytics/realtime/{mall_id}**
+- **Purpose:** Get real-time metrics.
+- **Frontend:** Use for live dashboard.
+
+---
+
+### **GET /analytics/mall/{mall_id}/heatmap**
+- **Purpose:** Get heatmap data.
+- **Frontend:** Use for heatmap visualization.
+
+---
+
+### **GET /analytics/camera/{camera_id}/details**
+- **Purpose:** Get analytics for a specific camera.
+- **Frontend:** Use for camera analytics.
+
+---
+
+### **GET /analytics/system/status**
+- **Purpose:** Get system-wide analytics status.
+- **Frontend:** Use for admin/system health.
+
+---
+
+### **POST /analytics/camera/{camera_id}/start**  
+### **POST /analytics/camera/{camera_id}/stop**
+- **Purpose:** Start/stop camera processing.
+- **Frontend:** Use for camera control.
+
+---
+
+### **POST /analytics/mall/{mall_id}/start_all_cameras**
+- **Purpose:** Start all cameras in a mall.
+- **Frontend:** Use for admin control.
+
+---
+
+### **POST /analytics/start-person-tracking/**
+- **Purpose:** Start person tracking (default or selected camera).
+- **Frontend:** Use to trigger tracking (e.g., via button).
+
+---
+
+### **WebSocket Endpoints**
+- **/analytics/ws/mall/{mall_id}**: Real-time mall analytics.
+- **/analytics/ws/camera/{camera_id}**: Real-time camera detections.
+- **/analytics/ws/system**: System-wide status.
+- **Frontend:** Use Socket.io or WebSocket client for live updates.
+
+---
+
+## 5. **Customer/Person Management (`/customer`)**
+
+### **POST /customer/add_customer**
+- **Purpose:** Add a new customer (for manual entry/testing).
+- **Frontend:** Rarely used; mostly for admin/testing.
+
+---
+
+### **GET /customer/{customer_id}**
+- **Purpose:** Get customer details.
+- **Frontend:** Use to show tracked person details.
+
+---
+
+### **PUT /customer/{customer_id}**
+- **Purpose:** Update customer info.
+- **Frontend:** Use for admin/testing.
+
+---
+
+### **DELETE /customer/{customer_id}**
+- **Purpose:** Delete customer.
+- **Frontend:** Use for admin/testing.
+
+---
+
+## 6. **ID Management (`/id-management`)**
+
+### **GET /id-management/statistics**
+- **Purpose:** Get ID statistics for all models (gaps, efficiency, next IDs).
+- **Frontend:** Use for admin/monitoring.
+
+---
+
+### **GET /id-management/next-available**
+- **Purpose:** Get next available ID for each model.
+- **Frontend:** Use for admin/monitoring.
+
+---
+
+### **GET /id-management/statistics/{model_name}**
+- **Purpose:** Get ID stats for a specific model.
+- **Frontend:** Use for admin/monitoring.
+
+---
+
+### **POST /id-management/reset-sequence/{model_name}**
+- **Purpose:** Reset auto-increment sequence for a model.
+- **Frontend:** Use for admin/maintenance.
+
+---
+
+### **GET /id-management/demo/scenario**
+- **Purpose:** Demonstrate ID management scenario.
+- **Frontend:** Use for admin/education.
+
+---
+
+## 7. **General Integration Notes**
+
+- **Authentication:**  
+  Always send `Authorization: Bearer <token>` for protected routes.
+- **WebSocket:**  
+  Use JWT token and mall_id as query params for real-time features.
+- **Error Handling:**  
+  Handle 400/401/403/500 errors gracefully in the UI.
+- **Data Refresh:**  
+  Use polling or WebSocket events to refresh analytics and tracking data in real time.
+
+---
+
+## 8. **Example Frontend Flow**
+
+1. **User logs in** → Save JWT token.
+2. **User selects mall/camera** → Fetch mall/camera list.
+3. **User starts tracking** → Call `/analytics/start-person-tracking/`.
+4. **Frontend connects to WebSocket** for live updates.
+5. **Show analytics, heatmaps, and live detections** using `/analytics/mall/{mall_id}` and WebSocket events. 
