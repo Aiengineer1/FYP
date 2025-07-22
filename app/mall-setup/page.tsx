@@ -187,6 +187,13 @@ export default function MallSetupPage() {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Creating Mall..." : "Create Mall"}
             </Button>
+            <Button
+              type="button"
+              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+              onClick={() => router.push('/mall-setup/draw')}
+            >
+              Don't have a mall map? Draw your mall layout
+            </Button>
           </form>
         </CardContent>
       </Card>
