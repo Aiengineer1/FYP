@@ -65,6 +65,11 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
     drawCanvas();
   }, [objects, cols, rows]);
 
+  // Redraw canvas in real time while drawing
+  useEffect(() => {
+    drawCanvas();
+  }, [currentRect, isDrawing, objects, cols, rows]);
+
   // Canvas drawing function - equivalent to Python's draw_grid + draw_cell_labels + set_object_cells
   const drawCanvas = () => {
     const canvas = canvasRef.current;
@@ -157,13 +162,17 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
       }
     });
 
-    // Draw current rectangle being drawn
+    // Draw current rectangle being drawn (dummy color)
     if (currentRect && isDrawing) {
-      ctx.strokeStyle = 'red';
+      ctx.save();
+      ctx.strokeStyle = '#87ceeb'; // sky blue border
       ctx.lineWidth = 2;
+      ctx.fillStyle = 'rgba(135, 206, 235, 0.3)'; // semi-transparent sky blue fill
       const width = currentRect.x2 - currentRect.x1;
       const height = currentRect.y2 - currentRect.y1;
+      ctx.fillRect(currentRect.x1, currentRect.y1, width, height);
       ctx.strokeRect(currentRect.x1, currentRect.y1, width, height);
+      ctx.restore();
     }
   };
 
