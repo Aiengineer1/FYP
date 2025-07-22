@@ -1529,110 +1529,119 @@ export default function HomographyMappingPage() {
                 </TabsList>
 
                 <TabsContent value="mapping" className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium">Mall Top-View Map</h3>
-                        {currentStep === 2 && zoneMappingMode === "map" && (
-                          <Badge variant="secondary">
-                            Select point {mapZonePoints.length + 1} of {cameraZonePoints.length}
-                          </Badge>
-                        )}
-                      </div>
-                      <div
-                        className="relative bg-muted rounded-md overflow-hidden"
-                        style={{
-                          width: imgSize.width ? `${imgSize.width}px` : "auto",
-                          height: imgSize.height ? `${imgSize.height}px` : "auto"
-                        }}
-                      >
-                        {mallMapImage ? (
-                          <div className="relative w-full h-full">
-                            <img
-                              src={mallMapImage}
-                              alt="Mall top-view map"
-                              className="object-contain"
-                              onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "map") : handleImageClick(e, "map")}
-                              onMouseMove={(e) => handleMouseMove(e, "map")}
-                              onMouseLeave={handleMouseLeave}
-                              onLoad={e => {
-                                setImgSize({
-                                  width: e.currentTarget.naturalWidth,
-                                  height: e.currentTarget.naturalHeight
-                                });
-                                setMallMapNaturalWidth(e.currentTarget.naturalWidth);
-                                setMallMapNaturalHeight(e.currentTarget.naturalHeight);
+                  <div className="flex gap-6 flex-wrap md:flex-nowrap justify-center">
+                    {/* Mall Map */}
+                    <div
+                      style={{
+                        width: "1280px",
+                        height: "720px",
+                        background: "#f3f3f3",
+                        position: "relative",
+                        borderRadius: "8px",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {mallMapImage ? (
+                        <div className="relative w-full h-full">
+                          <img
+                            src={mallMapImage}
+                            alt="Mall top-view map"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                            }}
+                            onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "map") : handleImageClick(e, "map")}
+                            onMouseMove={(e) => handleMouseMove(e, "map")}
+                            onMouseLeave={handleMouseLeave}
+                            onLoad={e => {
+                              setImgSize({
+                                width: e.currentTarget.naturalWidth,
+                                height: e.currentTarget.naturalHeight
+                              });
+                              setMallMapNaturalWidth(e.currentTarget.naturalWidth);
+                              setMallMapNaturalHeight(e.currentTarget.naturalHeight);
+                            }}
+                          />
+                          {/* Overlay points and canvas here if needed */}
+                          {currentStep === 2 && mapZonePoints.map((point, index) => (
+                            <div
+                              key={index}
+                              className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                              style={{
+                                left: `${point.x}px`,
+                                top: `${point.y}px`,
                               }}
-                            />
-                            {currentStep === 2 && mapZonePoints.map((point, index) => (
-                              <div
-                                key={index}
-                                className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-                                style={{
-                                  left: `${point.x}px`,
-                                  top: `${point.y}px`,
-                                }}
-                              >
-                                <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
-                                  {index + 1}
-                                </div>
+                            >
+                              <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                                {index + 1}
                               </div>
-                            ))}
-                            {hoverPoint && selectionSequence === "map" && mapZonePoints.length < cameraZonePoints.length && (
-                              <div
-                                className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-                                style={{
-                                  left: `${hoverPoint.x}px`,
-                                  top: `${hoverPoint.y}px`,
-                                }}
-                              >
-                                <div className="w-full h-full rounded-full border-2 border-dashed border-primary bg-primary/20" />
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <p className="text-muted-foreground">Loading mall map...</p>
-                          </div>
-                        )}
-                      </div>
+                            </div>
+                          ))}
+                          {hoverPoint && selectionSequence === "map" && mapZonePoints.length < cameraZonePoints.length && (
+                            <div
+                              className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                              style={{
+                                left: `${hoverPoint.x}px`,
+                                top: `${hoverPoint.y}px`,
+                              }}
+                            >
+                              <div className="w-full h-full rounded-full border-2 border-dashed border-primary bg-primary/20" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <p className="text-muted-foreground">Loading mall map...</p>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium">Camera View</h3>
-                        {currentStep === 2 && zoneMappingMode === "camera" && (
-                          <Badge variant="secondary">Select point {cameraZonePoints.length + 1}</Badge>
-                        )}
+                    {/* Camera View with header */}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch" }}>
+                      {/* Header row for camera name and refresh button */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", width: "1280px" }}>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">
                             {selectedCamera?.name}
                           </Badge>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              if (selectedCamera) {
-                                getCameraFrame(selectedCamera)
-                              }
-                            }}
-                            disabled={isCapturing}
-                          >
-                            {isCapturing ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Capturing...
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="h-4 w-4 mr-2" />
-                                Refresh Frame
-                              </>
-                            )}
-                          </Button>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            if (selectedCamera) {
+                              getCameraFrame(selectedCamera)
+                            }
+                          }}
+                          disabled={isCapturing}
+                        >
+                          {isCapturing ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Capturing...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Refresh Frame
+                            </>
+                          )}
+                        </Button>
                       </div>
-                      <div className="relative w-full h-[500px] bg-muted rounded-md overflow-hidden">
+                      {/* Camera Frame Box */}
+                      <div
+                        style={{
+                          width: "1280px",
+                          height: "720px",
+                          background: "#f3f3f3",
+                          position: "relative",
+                          borderRadius: "8px",
+                          overflow: "hidden",
+                          flexShrink: 0,
+                        }}
+                      >
                         {captureError ? (
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
                             <AlertCircle className="h-8 w-8 text-destructive mb-2" />
@@ -1644,11 +1653,16 @@ export default function HomographyMappingPage() {
                             <img
                               src={cameraFrame}
                               alt="Camera view"
-                              className="w-full h-full object-contain"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "contain",
+                              }}
                               onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "camera") : handleImageClick(e, "camera")}
                               onMouseMove={(e) => handleMouseMove(e, "camera")}
                               onMouseLeave={handleMouseLeave}
                             />
+                            {/* Overlay points and canvas here if needed */}
                             {currentStep === 2 && cameraZonePoints.map((point, index) => (
                               <div
                                 key={index}
