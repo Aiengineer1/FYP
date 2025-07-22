@@ -1,9 +1,0 @@
-{
-    "files.autoSaveDelay": 0,
-    "files.autoSaveWhenNoErrors": true,
-    "files.autoSaveWorkspaceFilesOnly": true,
-    "files.autoSave": "afterDelay",
-    "editor.codeActions.triggerOnFocusChange": true,
-    "editor.formatOnSave": true,
-    "notebook.formatOnSave.enabled": true
-}

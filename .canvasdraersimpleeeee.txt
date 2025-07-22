@@ -1,0 +1,287 @@
+// @ts-nocheck
+import React, { useRef, useEffect, useState } from 'react';
+import { Download, Image as ImageIcon, Trash2, HelpCircle } from 'lucide-react';
+
+const CANVAS_WIDTH = 1280;
+const CANVAS_HEIGHT = 720;
+const OBJECT_COLORS = [
+  '#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#f472b6', '#fb923c', '#4ade80'
+];
+
+interface CanvasDrawerProps {
+  plotWidth: number;
+  plotHeight: number;
+  tileWidth: number;
+  tileHeight: number;
+}
+
+export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHeight }: CanvasDrawerProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [objects, setObjects] = useState<any[]>([]);
+  const [colorIdx, setColorIdx] = useState(0);
+  const [objectName, setObjectName] = useState("");
+  const [showHelp, setShowHelp] = useState(false);
+  const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  const [pendingRect, setPendingRect] = useState<any>(null);
+  const fabricRef = useRef<any>(null);
+  const snapToGrid = true;
+
+  const cols = Math.max(1, Math.floor(plotWidth / tileWidth));
+  const rows = Math.max(1, Math.floor(plotHeight / tileHeight));
+  const cellW = CANVAS_WIDTH / cols;
+  const cellH = CANVAS_HEIGHT / rows;
+
+  useEffect(() => {
+    import('fabric').then(fab => {
+      const canvasEl = canvasRef.current;
+      if (canvasEl && (canvasEl as any)._fabricCanvas) {
+        (canvasEl as any)._fabricCanvas.dispose();
+        delete (canvasEl as any)._fabricCanvas;
+      }
+
+      const fabricCanvas = new fab.Canvas(canvasEl, {
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+        selection: false,
+        backgroundColor: '#f8fafc'
+      });
+      fabricRef.current = fabricCanvas;
+      (canvasEl as any)._fabricCanvas = fabricCanvas;
+
+      function sendToBack(obj: any) {
+        fabricCanvas.remove(obj);
+        fabricCanvas._objects.unshift(obj);
+        fabricCanvas.requestRenderAll();
+      }
+
+      for (let i = 0; i <= cols; i++) {
+        const x = i * cellW;
+        const line = new fab.Line([x, 0, x, CANVAS_HEIGHT], {
+          stroke: '#ccc', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+        });
+        fabricCanvas.add(line);
+        sendToBack(line);
+      }
+
+      for (let j = 0; j <= rows; j++) {
+        const y = j * cellH;
+        const line = new fab.Line([0, y, CANVAS_WIDTH, y], {
+          stroke: '#ccc', strokeWidth: 1, selectable: false, evented: false, excludeFromExport: true
+        });
+        fabricCanvas.add(line);
+        sendToBack(line);
+      }
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const label = new fab.Text(`${r + 1},${c + 1}`, {
+            left: c * cellW + cellW / 2,
+            top: r * cellH + cellH / 2,
+            fontSize: 10,
+            fill: '#666',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            excludeFromExport: true
+          });
+          fabricCanvas.add(label);
+          sendToBack(label);
+        }
+      }
+
+      let isDrawing = false;
+      let rect: any = null;
+      let start = null;
+
+      fabricCanvas.on('mouse:down', opt => {
+        isDrawing = true;
+        const pointer = fabricCanvas.getPointer(opt.e);
+        start = { x: pointer.x, y: pointer.y };
+        rect = new fab.Rect({
+          left: pointer.x,
+          top: pointer.y,
+          width: 0,
+          height: 0,
+          fill: OBJECT_COLORS[colorIdx % OBJECT_COLORS.length],
+          opacity: 0.4,
+          stroke: '#2563eb',
+          strokeWidth: 2,
+          rx: 6, ry: 6,
+          selectable: false,
+          evented: false
+        });
+        fabricCanvas.add(rect);
+      });
+
+      fabricCanvas.on('mouse:move', opt => {
+        if (!isDrawing || !rect || !start) return;
+        const pointer = fabricCanvas.getPointer(opt.e);
+        const left = Math.min(pointer.x, start.x);
+        const top = Math.min(pointer.y, start.y);
+        const width = Math.abs(pointer.x - start.x);
+        const height = Math.abs(pointer.y - start.y);
+
+        rect.set({ left, top, width, height });
+        rect.setCoords();
+        fabricCanvas.requestRenderAll();
+      });
+
+      fabricCanvas.on('mouse:up', () => {
+        if (rect && start) {
+          const x1 = Math.floor(rect.left / cellW);
+          const y1 = Math.floor(rect.top / cellH);
+          const x2 = Math.floor((rect.left + rect.width) / cellW);
+          const y2 = Math.floor((rect.top + rect.height) / cellH);
+
+          const metadata = {
+            col0: x1, col1: x2,
+            row0: y1, row1: y2,
+            pixel: { x1: rect.left, x2: rect.left + rect.width, y1: rect.top, y2: rect.top + rect.height },
+            fabricRect: rect,
+            color: rect.fill
+          };
+
+          setPendingRect(metadata);
+          setNameDialogOpen(true);
+        }
+        isDrawing = false;
+        rect = null;
+        start = null;
+      });
+    });
+  }, [plotWidth, plotHeight, tileWidth, tileHeight, colorIdx]);
+
+  function handleNameDialogClose(save: boolean) {
+    if (save && pendingRect && objectName.trim()) {
+      const obj = {
+        name: objectName.trim(),
+        grid_bounds: {
+          start_row: pendingRect.row0,
+          end_row: pendingRect.row1,
+          start_col: pendingRect.col0,
+          end_col: pendingRect.col1
+        },
+        real_world_bounds_ft: {
+          x1: pendingRect.col0 * tileWidth,
+          x2: (pendingRect.col1 + 1) * tileWidth,
+          y1: pendingRect.row0 * tileHeight,
+          y2: (pendingRect.row1 + 1) * tileHeight
+        },
+        pixel_bounds: pendingRect.pixel,
+        color: pendingRect.color
+      };
+      setObjects(prev => [...prev, obj]);
+      if (pendingRect.fabricRect) {
+        pendingRect.fabricRect.set({ selectable: false, evented: false });
+        const label = new fabricRef.current.Text(obj.name, {
+          left: (pendingRect.pixel.x1 + pendingRect.pixel.x2) / 2,
+          top: (pendingRect.pixel.y1 + pendingRect.pixel.y2) / 2,
+          originX: 'center', originY: 'center', fill: '#111', fontSize: 14,
+          selectable: false, evented: false
+        });
+        fabricRef.current.add(label);
+      }
+      setColorIdx(idx => idx + 1);
+    }
+    setObjectName("");
+    setPendingRect(null);
+    setNameDialogOpen(false);
+  }
+
+  function handleExportJSON() {
+    const data = {
+      plot_size_ft: [plotWidth, plotHeight],
+      tile_size_ft: [tileWidth, tileHeight],
+      canvas_size_px: [CANVAS_WIDTH, CANVAS_HEIGHT],
+      grid: { rows, cols },
+      objects: objects.map(({ color, ...rest }) => rest),
+      notes: 'All units in ft/pixels. Canvas size matches camera feed size.'
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mall_map.json';
+    a.click();
+  }
+
+  function handleExportPNG() {
+    const dataURL = fabricRef.current.toDataURL({ format: 'png', multiplier: 2 });
+    const a = document.createElement('a');
+    a.href = dataURL;
+    a.download = 'mall_map.png';
+    a.click();
+  }
+
+  function handleClear() {
+    fabricRef.current.clear();
+    setObjects([]);
+    fabricRef.current.dispose();
+    fabricRef.current = null;
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 py-6">
+      <div className="max-w-[1280px] w-full">
+        <h2 className="text-3xl font-bold text-blue-800 mb-1">Mall Floor Plan Drawer</h2>
+        <div className="text-sm text-gray-600 mb-3">
+          Grid: <b>{rows} rows × {cols} cols</b> | Tile size: <b>{tileWidth}ft × {tileHeight}ft</b>
+        </div>
+
+        {showHelp && (
+          <div className="bg-blue-50 p-4 rounded border border-blue-200 mb-4">
+            <ul className="list-disc pl-5 text-sm text-blue-800">
+              <li>Draw rectangles to represent areas.</li>
+              <li>Name each object (e.g., Entrance, Shop, Exit).</li>
+              <li>Click Export to save PNG or JSON.</li>
+              <li>All output is mapped to real-world and pixel coordinates.</li>
+            </ul>
+          </div>
+        )}
+
+        <div className="flex gap-4 mb-4">
+          <button onClick={handleExportJSON} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow flex items-center gap-2">
+            <Download size={18} /> JSON
+          </button>
+          <button onClick={handleExportPNG} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded shadow flex items-center gap-2">
+            <ImageIcon size={18} /> PNG
+          </button>
+          <button onClick={handleClear} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded shadow flex items-center gap-2">
+            <Trash2 size={18} /> Clear
+          </button>
+          <button onClick={() => setShowHelp(v => !v)} className="bg-yellow-100 hover:bg-yellow-200 text-yellow-700 px-3 py-1 rounded shadow flex items-center gap-2">
+            <HelpCircle size={18} /> Help
+          </button>
+        </div>
+
+        <div className="border rounded-xl overflow-hidden shadow-xl" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}>
+          <canvas
+            ref={canvasRef}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            className="block border border-gray-300 rounded"
+          />
+        </div>
+      </div>
+
+      {nameDialogOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+            <h3 className="font-semibold text-lg mb-2">Name This Area</h3>
+            <input
+              className="border border-gray-300 px-2 py-1 rounded w-full mb-4"
+              value={objectName}
+              onChange={e => setObjectName(e.target.value)}
+              placeholder="e.g., Shop A, Food Court, Exit"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button className="px-3 py-1 bg-gray-200 rounded" onClick={() => handleNameDialogClose(false)}>Cancel</button>
+              <button className="px-3 py-1 bg-blue-600 text-white rounded" onClick={() => handleNameDialogClose(true)} disabled={!objectName.trim()}>Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
