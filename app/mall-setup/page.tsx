@@ -23,8 +23,11 @@ export default function MallSetupPage() {
   const [mallMapImg, setMallMapImg] = useState<string | null>(null)
 
   useEffect(() => {
-    setMallMap(localStorage.getItem('mall_map_json'))
-    setMallMapImg(localStorage.getItem('mall_map_png'))
+    const userId = localStorage.getItem('user_id');
+    const mapJsonKey = userId ? `mall_map_json_${userId}` : 'mall_map_json';
+    const mapPngKey = userId ? `mall_map_png_${userId}` : 'mall_map_png';
+    setMallMap(localStorage.getItem(mapJsonKey));
+    setMallMapImg(localStorage.getItem(mapPngKey));
   }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -176,10 +179,13 @@ export default function MallSetupPage() {
           <button
             className="px-3 py-1 bg-red-500 text-white rounded"
             onClick={() => {
-              localStorage.removeItem('mall_map_json')
-              localStorage.removeItem('mall_map_png')
-              setMallMap(null)
-              setMallMapImg(null)
+              const userId = localStorage.getItem('user_id');
+              const mapJsonKey = userId ? `mall_map_json_${userId}` : 'mall_map_json';
+              const mapPngKey = userId ? `mall_map_png_${userId}` : 'mall_map_png';
+              localStorage.removeItem(mapJsonKey);
+              localStorage.removeItem(mapPngKey);
+              setMallMap(null);
+              setMallMapImg(null);
             }}
           >
             Clear Map
