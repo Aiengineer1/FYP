@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,6 +18,14 @@ export default function MallSetupPage() {
     address: "",
     map_image: null as File | null,
   })
+  // Mall map preview state
+  const [mallMap, setMallMap] = useState<string | null>(null)
+  const [mallMapImg, setMallMapImg] = useState<string | null>(null)
+
+  useEffect(() => {
+    setMallMap(localStorage.getItem('mall_map_json'))
+    setMallMapImg(localStorage.getItem('mall_map_png'))
+  }, [])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
@@ -35,6 +43,14 @@ export default function MallSetupPage() {
         map_image: file,
       }))
     }
+  }
+
+  // Helper to convert dataURL to File
+  function dataURLtoFile(dataurl: string, filename: string) {
+    const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+      bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    for (let i = 0; i < n; i++) u8arr[i] = bstr.charCodeAt(i);
+    return new File([u8arr], filename, { type: mime });
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,11 +71,11 @@ export default function MallSetupPage() {
         return
       }
 
-      // Validate required fields
-      if (!formData.name || !formData.address || !formData.map_image) {
+      // Validate required fields (allow either uploaded image or drawn map)
+      if (!formData.name || !formData.address || (!formData.map_image && !mallMapImg)) {
         toast({
           title: "Error",
-          description: "All fields are required",
+          description: "All fields are required (draw or upload a map image)",
           variant: "destructive",
         })
         return
@@ -68,8 +84,18 @@ export default function MallSetupPage() {
       // Create FormData for multipart/form-data
       const formDataToSend = new FormData()
 
-      // Add the image file directly to FormData
-      formDataToSend.append("map_image", formData.map_image)
+      // If user uploaded an image, use it. Otherwise, use the drawn map PNG from localStorage.
+      if (formData.map_image) {
+        formDataToSend.append("map_image", formData.map_image)
+      } else if (mallMapImg) {
+        const mapFile = dataURLtoFile(mallMapImg, 'mall_map.png');
+        formDataToSend.append("map_image", mapFile);
+      }
+
+      // Add mall_map_json if present
+      if (mallMap) {
+        formDataToSend.append('mall_map_json', mallMap)
+      }
 
       console.log("Sending form data with image:", formData.map_image?.name)
       console.log("User ID:", user_id)
@@ -138,6 +164,28 @@ export default function MallSetupPage() {
 
   return (
     <div className="container mx-auto py-8">
+      {/* Mall Map Preview */}
+      {(mallMapImg || mallMap) && (
+        <div className="mb-6 max-w-2xl mx-auto">
+          <div className="font-bold mb-2">Mall Map Preview:</div>
+          {mallMapImg ? (
+            <img src={mallMapImg} alt="Mall Map" className="border rounded shadow max-w-full mb-2" />
+          ) : (
+            <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto mb-2">{mallMap}</pre>
+          )}
+          <button
+            className="px-3 py-1 bg-red-500 text-white rounded"
+            onClick={() => {
+              localStorage.removeItem('mall_map_json')
+              localStorage.removeItem('mall_map_png')
+              setMallMap(null)
+              setMallMapImg(null)
+            }}
+          >
+            Clear Map
+          </button>
+        </div>
+      )}
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
           <CardTitle>Mall Setup</CardTitle>
@@ -179,9 +227,13 @@ export default function MallSetupPage() {
                 type="file"
                 accept="image/*"
                 onChange={handleImageChange}
-                required
+                required={!mallMapImg}
                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                disabled={!!mallMapImg}
               />
+              {mallMapImg && (
+                <div className="text-xs text-gray-500 mt-1">You have drawn a mall map. Upload is disabled.</div>
+              )}
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>

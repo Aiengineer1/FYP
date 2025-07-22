@@ -425,6 +425,26 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
             />
           </div>
         </div>
+        {/* Finish Button */}
+        <div className="flex justify-center mt-6">
+          <button
+            className="px-6 py-2 bg-green-600 text-white rounded shadow hover:bg-green-700 disabled:bg-green-300 disabled:cursor-not-allowed"
+            disabled={objects.length === 0}
+            onClick={() => {
+              // Save the map data to localStorage
+              localStorage.setItem('mall_map_json', JSON.stringify(objects));
+              // Save a PNG as well
+              const canvas = canvasRef.current;
+              if (canvas) {
+                localStorage.setItem('mall_map_png', canvas.toDataURL('image/png'));
+              }
+              // Redirect to mall-setup
+              window.location.href = '/mall-setup';
+            }}
+          >
+            Finish
+          </button>
+        </div>
       </div>
 
       {/* Name dialog */}
