@@ -1728,9 +1728,9 @@ export default function HomographyMappingPage() {
                         <br />
                         Current Object: <strong>{selectedObject.name.split('_')[1]}</strong>
                         <br />
-                        Camera points: {selectedObject.src_points.length}/4
+                        Camera points: {selectedObject.src_points.length}/{objectPointLimit}
                         <br />
-                        Map points: {selectedObject.dst_points.length}/4
+                        Map points: {selectedObject.dst_points.length}/{objectPointLimit}
                         <br />
                         {selectionSequence === "camera" ? (
                           <span className="text-primary">Selecting camera points...</span>
