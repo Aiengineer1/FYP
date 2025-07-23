@@ -27,6 +27,7 @@ def test_rtsp_url(ip_address, username="admin", password="admin1234"):
         ret, frame = cap.read()
         
         if ret and frame is not None:
+            frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
             height, width = frame.shape[:2]
             print(f"Success! Camera {ip_address} - Frame size: {width}x{height}")
             cap.release()
@@ -64,6 +65,7 @@ def test_alternative_rtsp_paths(ip_address, username="admin", password="admin123
             if cap.isOpened():
                 ret, frame = cap.read()
                 if ret and frame is not None:
+                    frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
                     height, width = frame.shape[:2]
                     print(f"   ✅ SUCCESS with {path} - Frame: {width}x{height}")
                     cap.release()

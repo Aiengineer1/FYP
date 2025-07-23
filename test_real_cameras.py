@@ -8,6 +8,7 @@ import requests
 import io
 import time
 from PIL import Image
+from io import BytesIO
 
 BASE_URL = "http://localhost:8000"
 
@@ -30,13 +31,13 @@ class RealCameraTester:
             }
         ]
         
-    def create_test_image(self, size=(800, 600), format='PNG'):
+    def create_test_image(self, size=(1280, 720), format='PNG'):
         """Create a test image in memory"""
         image = Image.new('RGB', size, color='lightblue')
-        buffer = io.BytesIO()
+        buffer = BytesIO()
         image.save(buffer, format=format)
         buffer.seek(0)
-        return buffer
+        return buffer.getvalue()
     
     def print_status(self, message, status="INFO"):
         symbols = {"SUCCESS": "OK", "FAILED": "FAIL", "INFO": "INFO", "TESTING": "TESTING"}

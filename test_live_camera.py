@@ -50,6 +50,7 @@ class LiveCameraTester:
             # Try to read first frame
             ret, frame = self.cap.read()
             if ret and frame is not None:
+                frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
                 height, width = frame.shape[:2]
                 self.print_status(f"Successfully connected to camera {self.camera_ip}", "SUCCESS")
                 self.print_status(f"Frame resolution: {width}x{height}", "INFO")
@@ -87,6 +88,9 @@ class LiveCameraTester:
                     time.sleep(1)
                     self.cap = cv2.VideoCapture(self.rtsp_url)
                     continue
+                
+                frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
+                height, width = frame.shape[:2]
                 
                 self.frame_count += 1
                 

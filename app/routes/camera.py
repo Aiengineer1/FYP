@@ -102,6 +102,8 @@ async def get_camera_frame(
                 worker = camera_worker_manager.workers[camera_id]
                 frame = await worker.get_latest_frame()
                 if frame is not None:
+                    frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
+                    print("Resized frame shape:", frame.shape)
                     _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                     frame_bytes = buffer.tobytes()
                     
@@ -130,6 +132,9 @@ async def get_camera_frame(
         if not ret:
             raise HTTPException(status_code=404, detail="Failed to capture frame")
         
+        frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
+        print("Resized frame shape:", frame.shape)
+
         # Convert frame to JPEG with quality optimization
         _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         frame_bytes = buffer.tobytes()
@@ -290,6 +295,8 @@ async def get_optimized_camera_stream(
         if not ret:
             raise HTTPException(status_code=500, detail="Failed to capture frame")
         
+        frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
+        print("Resized frame shape:", frame.shape)
         _, buffer = cv2.imencode('.jpg', frame)
         return StreamingResponse(
             iter([buffer.tobytes()]),
@@ -504,7 +511,7 @@ async def delete_fov_zone(
         raise HTTPException(status_code=500, detail=str(e))
 
 # Define target size for frame resizing
-TARGET_SIZE = (1366, 768)
+TARGET_SIZE = (1280, 720)
 
 @router.get("/camera/{camera_id}/test-mappings")
 async def test_camera_mappings(
@@ -533,7 +540,7 @@ async def test_camera_mappings(
             raise ValueError("Failed to decode mall map image")
         
         # Resize lab_map to the same target size to ensure consistent coordinate systems
-        lab_map = cv2.resize(lab_map, TARGET_SIZE, interpolation=cv2.INTER_AREA)
+        lab_map = cv2.resize(lab_map, (1280, 720), interpolation=cv2.INTER_AREA)
 
         # Get camera connection
         if camera_id not in camera_connections:
@@ -559,6 +566,9 @@ async def test_camera_mappings(
         if not ret:
             logger.error(f"Failed to read frame from camera {camera_id}")
             raise HTTPException(status_code=500, detail="Failed to read frame")
+
+        frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
+        print("Resized frame shape:", frame.shape)
 
         # Resize frame to match target size
         frame_resized = cv2.resize(frame, TARGET_SIZE, interpolation=cv2.INTER_AREA)
@@ -604,6 +614,9 @@ async def test_camera_mappings(
 
         # --- Create side-by-side diagnostic image ---
         diagnostic_image = np.hstack([frame_resized, map_with_debug_points])
+
+        diagnostic_image = cv2.resize(diagnostic_image, (1280, 720), interpolation=cv2.INTER_AREA)
+        print("Resized diagnostic image shape:", diagnostic_image.shape)
 
         # Convert frame to JPEG
         _, buffer = cv2.imencode('.jpg', diagnostic_image)

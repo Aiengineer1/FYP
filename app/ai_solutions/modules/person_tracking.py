@@ -343,8 +343,8 @@ class PersonTracker:
                 if not cap.isOpened():
                     raise ValueError("Could not open video stream. Check the RTSP URL or credentials.")
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
                 print("Video stream opened successfully.")
             except Exception as e:
                 print(f"Error opening RTSP stream: {e}")
@@ -376,7 +376,7 @@ class PersonTracker:
                             verbose=False,
                             conf=0.5,
                             iou=0.5,
-                            imgsz=(1920, 1088)
+                            imgsz=(1280, 720)
                         )[0]
                         person_boxes = []
                         if results.boxes is not None:

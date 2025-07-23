@@ -99,7 +99,7 @@ class CameraWorkerTester:
             headers = {"Authorization": f"Bearer {self.token}"}
             
             # Create test image
-            test_image = self.create_test_image()
+            test_image = self.create_test_image(size=(1280, 720))
             
             # Prepare form data with file
             files = {
