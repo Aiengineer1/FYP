@@ -147,6 +147,21 @@ export default function HomographyMappingPage() {
     return { x, y, rect };
   };
 
+  // --- Helper: Convert display/canvas coordinates to 1280x720 image coordinates ---
+  function toImageCoords(point: Point, img: HTMLImageElement | null, naturalWidth: number | null, naturalHeight: number | null) {
+    if (!img || !naturalWidth || !naturalHeight) return { x: point.x, y: point.y };
+    const rect = img.getBoundingClientRect();
+    const scaleImg = Math.min(rect.width / naturalWidth, rect.height / naturalHeight);
+    const displayWidth = naturalWidth * scaleImg;
+    const displayHeight = naturalHeight * scaleImg;
+    const offsetX = (rect.width - displayWidth) / 2;
+    const offsetY = (rect.height - displayHeight) / 2;
+    // Undo display scaling
+    const x = (point.x - offsetX) / scaleImg;
+    const y = (point.y - offsetY) / scaleImg;
+    return { x: Math.max(0, Math.min(naturalWidth, x)), y: Math.max(0, Math.min(naturalHeight, y)) };
+  }
+
   // Fetch cameras and mall map when component mounts
   useEffect(() => {
     const fetchData = async () => {
@@ -527,9 +542,12 @@ export default function HomographyMappingPage() {
     if (!selectedObject) return;
 
     const img = event.currentTarget;
-    let { x, y, rect } = normalizeCoords(event, img);
+    let x = event.nativeEvent.offsetX;
+    let y = event.nativeEvent.offsetY;
 
+    // For map, keep existing scaling logic
     if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
+      const rect = img.getBoundingClientRect();
       const scaleImgX = rect.width / mallMapNaturalWidth;
       const scaleImgY = rect.height / mallMapNaturalHeight;
       const displayWidth = mallMapNaturalWidth * scaleImgX;
@@ -622,7 +640,7 @@ export default function HomographyMappingPage() {
     return updatedMapping;
   };
 
-  // Modify handleSaveHomography to fix completedMappings processing
+  // --- Backend Payload: Rescale all points to 1280x720 before sending ---
   const handleSaveHomography = async () => {
     if (!selectedCamera) {
       console.log("Debug: No camera selected");
@@ -636,6 +654,10 @@ export default function HomographyMappingPage() {
 
     try {
       setIsSaving(true);
+
+      // Get mall map and camera frame img elements
+      const mallImg = document.querySelector('.relative.w-full.h-full img') as HTMLImageElement | null;
+      const camImg = document.querySelector('.relative.w-full.h-full + div img') as HTMLImageElement | null;
 
       // Process all mappings to ensure they match backend requirements
       const processedMappings = mappingObjects.map(mapping => {
@@ -652,14 +674,28 @@ export default function HomographyMappingPage() {
           return null;
         }
 
+        // Rescale points for backend
+        const src_points = mapping.src_points.map(p => {
+          const pt = toImageCoords(p, camImg, camImg?.naturalWidth || 1280, camImg?.naturalHeight || 720);
+          return [pt.x, pt.y];
+        });
+        const dst_points = mapping.dst_points.map(p => {
+          const pt = toImageCoords(p, mallImg, mallMapNaturalWidth || 1280, mallMapNaturalHeight || 720);
+          return [pt.x, pt.y];
+        });
+        const zone_points = (mapping.zone_points.length > 0 ? mapping.zone_points : zone.points).map(p => {
+          const pt = toImageCoords(p, mallImg, mallMapNaturalWidth || 1280, mallMapNaturalHeight || 720);
+          return { x: pt.x, y: pt.y };
+        });
+
         // Update the mapping with zone points
         const updatedMapping: ProcessedMapping = {
           name: mapping.name,
           zone_name: mapping.zone_name,
           object_name: mapping.object_name,
-          zone_points: mapping.zone_points.length > 0 ? mapping.zone_points : zone.points,
-          src_points: mapping.src_points.map(p => [p.x, p.y]),
-          dst_points: mapping.dst_points.map(p => [p.x, p.y])
+          zone_points,
+          src_points,
+          dst_points
         };
 
         return updatedMapping;
@@ -1732,11 +1768,11 @@ export default function HomographyMappingPage() {
                         <br />
                         Map points: {selectedObject.dst_points.length}/{objectPointLimit}
                         <br />
-                        {selectionSequence === "camera" ? (
-                          <span className="text-primary">Selecting camera points...</span>
-                        ) : (
+                        {isMappingMode && selectedObject && selectionSequence === "map" && selectedObject.dst_points.length < objectPointLimit ? (
                           <span className="text-primary">Selecting map points...</span>
-                        )}
+                        ) : isMappingMode && selectedObject && selectionSequence === "camera" && selectedObject.src_points.length < objectPointLimit ? (
+                          <span className="text-primary">Selecting camera points...</span>
+                        ) : null}
                       </p>
                     </div>
 
@@ -1822,11 +1858,40 @@ export default function HomographyMappingPage() {
                   />
                   {/* Overlay points and canvas here if needed */}
                   {currentStep === 2 && mapZonePoints.map((point, index) => {
-                    // Convert image coordinates to display coordinates
-                    const container = document.querySelector('.relative.w-full.h-full');
-                    const img = container?.querySelector('img');
+                    // Convert image coordinates to display coordinates for drawing
                     let displayX = point.x;
                     let displayY = point.y;
+                    const img = document.querySelector('.relative.w-full.h-full img') as HTMLImageElement | null;
+                    if (img && mallMapNaturalWidth && mallMapNaturalHeight) {
+                      const rect = img.getBoundingClientRect();
+                      const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+                      const displayWidth = mallMapNaturalWidth * scaleImg;
+                      const displayHeight = mallMapNaturalHeight * scaleImg;
+                      const offsetX = (rect.width - displayWidth) / 2;
+                      const offsetY = (rect.height - displayHeight) / 2;
+                      displayX = point.x * scaleImg + offsetX;
+                      displayY = point.y * scaleImg + offsetY;
+                    }
+                    return (
+                      <div
+                        key={index}
+                        className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                        style={{
+                          left: `${displayX}px`,
+                          top: `${displayY}px`,
+                        }}
+                      >
+                        <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                          {index + 1}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {currentStep === 4 && selectedObject && selectedObject.dst_points.map((point, index) => {
+                    // Use the same scaling logic as zone mapping
+                    let displayX = point.x;
+                    let displayY = point.y;
+                    const img = document.querySelector('.relative.w-full.h-full img') as HTMLImageElement | null;
                     if (img && mallMapNaturalWidth && mallMapNaturalHeight) {
                       const rect = img.getBoundingClientRect();
                       const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
@@ -1953,7 +2018,36 @@ export default function HomographyMappingPage() {
                       }}
                     />
                     {/* Overlay points and canvas here if needed */}
-                    {currentStep === 2 && cameraZonePoints.map((point, index) => (
+                    {currentStep === 2 && cameraZonePoints.map((point, index) => {
+                      let displayX = point.x;
+                      let displayY = point.y;
+                      const img = document.querySelector('.relative.w-full.h-full + div img') as HTMLImageElement | null;
+                      if (img && img.naturalWidth && img.naturalHeight) {
+                        const rect = img.getBoundingClientRect();
+                        const scaleImg = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight);
+                        const displayWidth = img.naturalWidth * scaleImg;
+                        const displayHeight = img.naturalHeight * scaleImg;
+                        const offsetX = (rect.width - displayWidth) / 2;
+                        const offsetY = (rect.height - displayHeight) / 2;
+                        displayX = point.x * scaleImg + offsetX;
+                        displayY = point.y * scaleImg + offsetY;
+                      }
+                      return (
+                        <div
+                          key={index}
+                          className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                          style={{
+                            left: `${displayX}px`,
+                            top: `${displayY}px`,
+                          }}
+                        >
+                          <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                            {index + 1}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {currentStep === 4 && selectedObject && selectedObject.src_points.map((point, index) => (
                       <div
                         key={index}
                         className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
