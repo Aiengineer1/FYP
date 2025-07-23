@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Map, Plus, Save, Play, Square, Trash2, Loader2, RefreshCw, AlertCircle, Edit } from "lucide-react"
@@ -101,6 +101,51 @@ export default function HomographyMappingPage() {
   const [mallMapNaturalWidth, setMallMapNaturalWidth] = useState<number | null>(null);
   const [mallMapNaturalHeight, setMallMapNaturalHeight] = useState<number | null>(null);
   const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
+  const [scale, setScale] = useState(1);
+  const mappingContainerRef = useRef<HTMLDivElement>(null);
+
+  // Add new states for flexible object mapping
+  const [objectPointLimit, setObjectPointLimit] = useState(4); // default 4, user can increase
+  const [objectMappingStage, setObjectMappingStage] = useState<'camera' | 'map'>('camera');
+  const [showPointLimitPrompt, setShowPointLimitPrompt] = useState(false);
+  const [showAnotherObjectPrompt, setShowAnotherObjectPrompt] = useState(false);
+  const [pendingObjectPoints, setPendingObjectPoints] = useState(0);
+
+  // Handler for point limit prompt
+  const handlePointLimitPrompt = (additional: number) => {
+    if (additional > 0) {
+      setObjectPointLimit(4 + additional);
+      setShowPointLimitPrompt(false);
+    } else {
+      // User wants only 4 points, move to map selection
+      setObjectPointLimit(4);
+      setShowPointLimitPrompt(false);
+      setSelectionSequence("map");
+      toast({ title: "Camera points complete", description: "Now select corresponding points on the map view" });
+    }
+  };
+
+  // Handler for another object prompt
+  const handleAnotherObjectPrompt = (mapAnother: boolean) => {
+    setShowAnotherObjectPrompt(false);
+    if (mapAnother) {
+      setCurrentStep(3); // Go back to object creation
+    } else {
+      handleSaveHomography(); // Save all mappings
+    }
+  };
+
+  // Helper to normalize coordinates to 1280x720
+  const normalizeCoords = (event: React.MouseEvent, img: HTMLImageElement) => {
+    const rect = img.getBoundingClientRect();
+    let x = event.clientX - rect.left;
+    let y = event.clientY - rect.top;
+    const scaleX = rect.width / 1280;
+    const scaleY = rect.height / 720;
+    x = x / scaleX;
+    y = y / scaleY;
+    return { x, y, rect };
+  };
 
   // Fetch cameras and mall map when component mounts
   useEffect(() => {
@@ -349,6 +394,17 @@ export default function HomographyMappingPage() {
     setCurrentStep(2) // Move to zone mapping step
   }
 
+  // Helper to get original coordinates from scaled click
+  const getOriginalCoords = (event: React.MouseEvent, img: HTMLImageElement) => {
+    const rect = img.getBoundingClientRect();
+    let x = event.clientX - rect.left;
+    let y = event.clientY - rect.top;
+    // If parent is scaled, correct for scale
+    x = x / scale;
+    y = y / scale;
+    return { x, y, rect };
+  };
+
   // Update handleZonePointMapping for accurate click mapping on mall map
   const handleZonePointMapping = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
     if (!currentZone || currentStep !== 2 || type !== zoneMappingMode) return;
@@ -356,19 +412,17 @@ export default function HomographyMappingPage() {
     if (type === "map" && mapZonePoints.length >= cameraZonePoints.length) return;
 
     const img = event.currentTarget;
-    const rect = img.getBoundingClientRect();
-    let x = event.clientX - rect.left;
-    let y = event.clientY - rect.top;
+    let { x, y, rect } = getOriginalCoords(event, img);
 
     if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
       // Accurate mapping for object-contain images
-      const scale = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
-      const displayWidth = mallMapNaturalWidth * scale;
-      const displayHeight = mallMapNaturalHeight * scale;
+      const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+      const displayWidth = mallMapNaturalWidth * scaleImg;
+      const displayHeight = mallMapNaturalHeight * scaleImg;
       const offsetX = (rect.width - displayWidth) / 2;
       const offsetY = (rect.height - displayHeight) / 2;
-      x = (event.clientX - rect.left - offsetX) / scale;
-      y = (event.clientY - rect.top - offsetY) / scale;
+      x = (event.clientX - rect.left - offsetX) / (scale * scaleImg);
+      y = (event.clientY - rect.top - offsetY) / (scale * scaleImg);
       // Clamp to image bounds
       x = Math.max(0, Math.min(mallMapNaturalWidth, x));
       y = Math.max(0, Math.min(mallMapNaturalHeight, y));
@@ -466,26 +520,24 @@ export default function HomographyMappingPage() {
     setCurrentStep(4)
   }
 
-  // Update handleImageClick for object mapping (map side)
+  // Update handleImageClick for flexible object mapping
   const handleImageClick = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
     if (!isSelecting && !isMappingMode) return;
     if (isMappingMode && type !== selectionSequence) return;
+    if (!selectedObject) return;
 
     const img = event.currentTarget;
-    const rect = img.getBoundingClientRect();
-    let x = event.clientX - rect.left;
-    let y = event.clientY - rect.top;
+    let { x, y, rect } = normalizeCoords(event, img);
 
     if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
-      // Accurate mapping for object-contain images
-      const scale = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
-      const displayWidth = mallMapNaturalWidth * scale;
-      const displayHeight = mallMapNaturalHeight * scale;
+      const scaleImgX = rect.width / mallMapNaturalWidth;
+      const scaleImgY = rect.height / mallMapNaturalHeight;
+      const displayWidth = mallMapNaturalWidth * scaleImgX;
+      const displayHeight = mallMapNaturalHeight * scaleImgY;
       const offsetX = (rect.width - displayWidth) / 2;
       const offsetY = (rect.height - displayHeight) / 2;
-      x = (event.clientX - rect.left - offsetX) / scale;
-      y = (event.clientY - rect.top - offsetY) / scale;
-      // Clamp to image bounds
+      x = (event.clientX - rect.left - offsetX) / scaleImgX;
+      y = (event.clientY - rect.top - offsetY) / scaleImgY;
       x = Math.max(0, Math.min(mallMapNaturalWidth, x));
       y = Math.max(0, Math.min(mallMapNaturalHeight, y));
       x = Math.round(x);
@@ -496,49 +548,33 @@ export default function HomographyMappingPage() {
       const currentZone = zones.find(zone => selectedObject.name.startsWith(zone.name));
       if (!currentZone) return;
 
-      if (type === "camera" && selectedObject.src_points.length < 4) {
+      if (type === "camera" && selectedObject.src_points.length < objectPointLimit) {
         const newSrcPoints = [...selectedObject.src_points, { x, y, id: selectedObject.src_points.length + 1 }];
-        setSelectedObject(prev => ({
-          ...prev!,
-          src_points: newSrcPoints
-        }));
+        setSelectedObject(prev => ({ ...prev!, src_points: newSrcPoints }));
         if (newSrcPoints.length === 4) {
+          setShowPointLimitPrompt(true);
+        } else if (newSrcPoints.length === objectPointLimit) {
           setSelectionSequence("map");
-          toast({
-            title: "Camera points complete",
-            description: "Now select corresponding points on the map view",
-          });
+          toast({ title: "Camera points complete", description: "Now select corresponding points on the map view" });
         }
-      } else if (type === "map" && selectedObject.dst_points.length < 4) {
+      } else if (type === "camera" && selectedObject.src_points.length >= 4 && selectedObject.src_points.length < objectPointLimit) {
+        const newSrcPoints = [...selectedObject.src_points, { x, y, id: selectedObject.src_points.length + 1 }];
+        setSelectedObject(prev => ({ ...prev!, src_points: newSrcPoints }));
+        if (newSrcPoints.length === objectPointLimit) {
+          setSelectionSequence("map");
+          toast({ title: "Camera points complete", description: "Now select corresponding points on the map view" });
+        }
+      } else if (type === "map" && selectedObject.dst_points.length < objectPointLimit) {
         if (!isPointInsideZone({ x, y }, currentZone)) {
           showTemporaryError("You are out of zone. Please select the object inside the zone.");
           return;
         }
         const newDstPoints = [...selectedObject.dst_points, { x, y, id: selectedObject.dst_points.length + 1 }];
-        const updatedObject = {
-          ...selectedObject,
-          dst_points: newDstPoints
-        };
+        const updatedObject = { ...selectedObject, dst_points: newDstPoints };
         setSelectedObject(updatedObject);
-        setMappingObjects(prev =>
-          prev.map(obj =>
-            obj.name === selectedObject.name ? updatedObject : obj
-          )
-        );
-        if (newDstPoints.length === 4) {
-          if (updatedObject.src_points.length === 4 && updatedObject.dst_points.length === 4) {
-            setMappingObjects(prev =>
-              prev.map(obj =>
-                obj.name === selectedObject.name ? updatedObject : obj
-              )
-            );
-            setSelectedObject(null);
-            setIsMappingMode(false);
-            setSelectionSequence("camera");
-            setShowMappingPrompt(true);
-          } else {
-            showTemporaryError("Please select all 4 points on both views");
-          }
+        setMappingObjects(prev => prev.map(obj => obj.name === selectedObject.name ? updatedObject : obj));
+        if (newDstPoints.length === objectPointLimit) {
+          setShowAnotherObjectPrompt(true);
         }
       }
     }
@@ -809,14 +845,24 @@ export default function HomographyMappingPage() {
 
   // Add mouse move handler for hover effect
   const handleMouseMove = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
-    if (!isMappingMode || type !== selectionSequence) return
-
-    const img = event.currentTarget
-    const rect = img.getBoundingClientRect()
-    const x = event.clientX - rect.left
-    const y = event.clientY - rect.top
-    setHoverPoint({ x, y })
-  }
+    if (!isMappingMode || type !== selectionSequence) return;
+    const img = event.currentTarget;
+    let { x, y, rect } = getOriginalCoords(event, img);
+    if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
+      const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+      const displayWidth = mallMapNaturalWidth * scaleImg;
+      const displayHeight = mallMapNaturalHeight * scaleImg;
+      const offsetX = (rect.width - displayWidth) / 2;
+      const offsetY = (rect.height - displayHeight) / 2;
+      x = (event.clientX - rect.left - offsetX) / (scale * scaleImg);
+      y = (event.clientY - rect.top - offsetY) / (scale * scaleImg);
+      x = Math.max(0, Math.min(mallMapNaturalWidth, x));
+      y = Math.max(0, Math.min(mallMapNaturalHeight, y));
+      x = Math.round(x);
+      y = Math.round(y);
+    }
+    setHoverPoint({ x, y });
+  };
 
   // Add mouse leave handler
   const handleMouseLeave = () => {
@@ -1528,662 +1574,475 @@ export default function HomographyMappingPage() {
                   <TabsTrigger value="testing">Testing</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="mapping" className="space-y-4">
-                  <div className="flex gap-6 flex-wrap md:flex-nowrap justify-center">
-                    {/* Mall Map */}
-                    <div
-                      style={{
-                        width: "1280px",
-                        height: "720px",
-                        background: "#f3f3f3",
-                        position: "relative",
-                        borderRadius: "8px",
-                        overflow: "hidden",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {mallMapImage ? (
-                        <div className="relative w-full h-full">
-                          <img
-                            src={mallMapImage}
-                            alt="Mall top-view map"
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "contain",
-                            }}
-                            onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "map") : handleImageClick(e, "map")}
-                            onMouseMove={(e) => handleMouseMove(e, "map")}
-                            onMouseLeave={handleMouseLeave}
-                            onLoad={e => {
-                              setImgSize({
-                                width: e.currentTarget.naturalWidth,
-                                height: e.currentTarget.naturalHeight
-                              });
-                              setMallMapNaturalWidth(e.currentTarget.naturalWidth);
-                              setMallMapNaturalHeight(e.currentTarget.naturalHeight);
-                            }}
-                          />
-                          {/* Overlay points and canvas here if needed */}
-                          {currentStep === 2 && mapZonePoints.map((point, index) => (
-                            <div
-                              key={index}
-                              className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-                              style={{
-                                left: `${point.x}px`,
-                                top: `${point.y}px`,
-                              }}
-                            >
-                              <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
-                                {index + 1}
-                              </div>
-                            </div>
-                          ))}
-                          {hoverPoint && selectionSequence === "map" && mapZonePoints.length < cameraZonePoints.length && (
-                            <div
-                              className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-                              style={{
-                                left: `${hoverPoint.x}px`,
-                                top: `${hoverPoint.y}px`,
-                              }}
-                            >
-                              <div className="w-full h-full rounded-full border-2 border-dashed border-primary bg-primary/20" />
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <p className="text-muted-foreground">Loading mall map...</p>
-                        </div>
-                      )}
-                    </div>
+                {/* All UI except the mapping area remains here */}
+                {currentStep === 1 && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="zone-name">Zone Name</Label>
+                        <Input
+                          id="zone-name"
+                          value={zoneName}
+                          onChange={(e) => setZoneName(e.target.value)}
+                          placeholder="e.g., Checkout Counter"
+                        />
+                      </div>
 
-                    {/* Camera View with header */}
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch" }}>
-                      {/* Header row for camera name and refresh button */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", width: "1280px" }}>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">
-                            {selectedCamera?.name}
-                          </Badge>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (selectedCamera) {
-                              getCameraFrame(selectedCamera)
-                            }
-                          }}
-                          disabled={isCapturing}
-                        >
-                          {isCapturing ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Capturing...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Refresh Frame
-                            </>
-                          )}
+                      <div className="flex items-end">
+                        <Button className="w-full" onClick={handleZoneSubmit} disabled={!zoneName}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Zone
                         </Button>
                       </div>
-                      {/* Camera Frame Box */}
-                      <div
-                        style={{
-                          width: "1280px",
-                          height: "720px",
-                          background: "#f3f3f3",
-                          position: "relative",
-                          borderRadius: "8px",
-                          overflow: "hidden",
-                          flexShrink: 0,
+                    </div>
+
+                    <div className="bg-muted/50 p-4 rounded-md">
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Instructions:</strong> Enter a name for your zone and click "Add Zone" to proceed to zone mapping.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {currentStep === 2 && currentZone && (
+                  <div className="space-y-4">
+                    <div className="bg-muted/50 p-4 rounded-md">
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Instructions:</strong>
+                        <br />
+                        1. First, select points on the camera view (minimum 3)
+                        <br />
+                        2. After 5 points, specify how many more points to add
+                        <br />
+                        3. Or click "Done" to proceed to map view
+                        <br />
+                        4. Then select corresponding points on the map view
+                        <br />
+                        5. Points should be selected in the same order on both views
+                        <br />
+                        6. You must select exactly the same number of points on both views
+                        <br />
+                        <br />
+                        Current Zone: <strong>{currentZone.name}</strong>
+                        <br />
+                        Camera points: {cameraZonePoints.length}
+                        <br />
+                        Map points: {mapZonePoints.length} of {cameraZonePoints.length}
+                      </p>
+                    </div>
+
+                    <div className="flex justify-center gap-4">
+                      <Button
+                        variant="outline"
+                        onClick={handleSwitchMappingMode}
+                        disabled={zoneMappingMode === "camera" && cameraZonePoints.length < 3}
+                      >
+                        Switch to {zoneMappingMode === "camera" ? "Map" : "Camera"} View
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleRemoveLastPoint}
+                        disabled={zoneMappingMode === "camera" ? cameraZonePoints.length === 0 : mapZonePoints.length === 0}
+                      >
+                        Remove Last Point
+                      </Button>
+                      {zoneMappingMode === "camera" && cameraZonePoints.length >= 3 && !showPointPrompt && (
+                        <Button
+                          variant="outline"
+                          onClick={handleEarlyComplete}
+                        >
+                          Done
+                        </Button>
+                      )}
+                      <Button
+                        onClick={handleCompleteZoneMapping}
+                        disabled={cameraZonePoints.length < 3 || mapZonePoints.length < 3}
+                      >
+                        Complete Zone Mapping
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {currentStep === 3 && currentZone && isZoneMappingComplete && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="object-name">Object Name</Label>
+                        <Input
+                          id="object-name"
+                          value={objectName}
+                          onChange={(e) => setObjectName(e.target.value)}
+                          placeholder="e.g., Shelf A"
+                        />
+                      </div>
+
+                      <div className="flex items-end space-x-2">
+                        <Button
+                          className="flex-1"
+                          onClick={handleObjectCreate}
+                          disabled={!objectName}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Object
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => {
+                            setCurrentStep(1)
+                            setCurrentZone(null)
+                            setIsZoneMappingComplete(false)
+                          }}
+                        >
+                          Back to Zones
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="bg-muted/50 p-4 rounded-md">
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Instructions:</strong> Enter a name for your object and click "Add Object" to proceed to mapping.
+                        <br />
+                        Current Zone: <strong>{currentZone.name}</strong>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {currentStep === 4 && selectedObject && (
+                  <div className="space-y-4">
+                    <div className="bg-muted/50 p-4 rounded-md">
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Instructions:</strong>
+                        <br />
+                        1. First, select 4 points on the camera view (numbered 1-4)
+                        <br />
+                        2. Then, select the corresponding 4 points on the map view
+                        <br />
+                        3. Points must be selected inside the mapped zone
+                        <br />
+                        4. Points should be selected in the same order on both views
+                        <br />
+                        <br />
+                        Current Object: <strong>{selectedObject.name.split('_')[1]}</strong>
+                        <br />
+                        Camera points: {selectedObject.src_points.length}/4
+                        <br />
+                        Map points: {selectedObject.dst_points.length}/4
+                        <br />
+                        {selectionSequence === "camera" ? (
+                          <span className="text-primary">Selecting camera points...</span>
+                        ) : (
+                          <span className="text-primary">Selecting map points...</span>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedObject(null)
+                          setIsMappingMode(false)
+                          setSelectionSequence("camera")
+                          setCurrentStep(3)
                         }}
                       >
-                        {captureError ? (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                            <AlertCircle className="h-8 w-8 text-destructive mb-2" />
-                            <p className="text-destructive font-medium">Failed to capture frame</p>
-                            <p className="text-sm text-muted-foreground">{captureError}</p>
-                          </div>
-                        ) : cameraFrame ? (
-                          <div className="relative w-full h-full">
-                            <img
-                              src={cameraFrame}
-                              alt="Camera view"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "contain",
-                              }}
-                              onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "camera") : handleImageClick(e, "camera")}
-                              onMouseMove={(e) => handleMouseMove(e, "camera")}
-                              onMouseLeave={handleMouseLeave}
-                            />
-                            {/* Overlay points and canvas here if needed */}
-                            {currentStep === 2 && cameraZonePoints.map((point, index) => (
-                              <div
-                                key={index}
-                                className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-                                style={{
-                                  left: `${point.x}px`,
-                                  top: `${point.y}px`,
-                                }}
-                              >
-                                <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
-                                  {index + 1}
-                                </div>
-                              </div>
-                            ))}
-                            {hoverPoint && selectionSequence === "camera" && !showPointPrompt && (
-                              <div
-                                className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-                                style={{
-                                  left: `${hoverPoint.x}px`,
-                                  top: `${hoverPoint.y}px`,
-                                }}
-                              >
-                                <div className="w-full h-full rounded-full border-2 border-dashed border-primary bg-primary/20" />
-                              </div>
-                            )}
-                            {showPointPrompt && (
-                              <div className="absolute bottom-0 left-0 right-0 bg-background/95 border-t p-4">
-                                <form onSubmit={handleAdditionalPointsSubmit} className="space-y-4">
-                                  <div className="flex items-center gap-4">
-                                    <div className="flex-1">
-                                      <Label htmlFor="additional-points">How many more points do you want to add?</Label>
-                                      <Input
-                                        id="additional-points"
-                                        type="number"
-                                        min="0"
-                                        value={additionalPoints}
-                                        onChange={(e) => setAdditionalPoints(parseInt(e.target.value) || 0)}
-                                        className="mt-1"
-                                      />
-                                    </div>
-                                    <div className="flex items-end gap-2">
-                                      <Button type="submit" disabled={additionalPoints < 0}>
-                                        Continue
-                                      </Button>
-                                      <Button type="button" variant="outline" onClick={handleEarlyComplete}>
-                                        Done
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </form>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <p className="text-muted-foreground">No camera frame available</p>
-                          </div>
-                        )}
-                      </div>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleMappingComplete}
+                        disabled={selectedObject.src_points.length !== 4 || selectedObject.dst_points.length !== 4}
+                      >
+                        Complete Mapping
+                      </Button>
                     </div>
                   </div>
+                )}
 
-                  {currentStep === 1 && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="zone-name">Zone Name</Label>
-                          <Input
-                            id="zone-name"
-                            value={zoneName}
-                            onChange={(e) => setZoneName(e.target.value)}
-                            placeholder="e.g., Checkout Counter"
-                          />
-                        </div>
-
-                        <div className="flex items-end">
-                          <Button className="w-full" onClick={handleZoneSubmit} disabled={!zoneName}>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Zone
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="bg-muted/50 p-4 rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          <strong>Instructions:</strong> Enter a name for your zone and click "Add Zone" to proceed to zone mapping.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {currentStep === 2 && currentZone && (
-                    <div className="space-y-4">
-                      <div className="bg-muted/50 p-4 rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          <strong>Instructions:</strong>
-                          <br />
-                          1. First, select points on the camera view (minimum 3)
-                          <br />
-                          2. After 5 points, specify how many more points to add
-                          <br />
-                          3. Or click "Done" to proceed to map view
-                          <br />
-                          4. Then select corresponding points on the map view
-                          <br />
-                          5. Points should be selected in the same order on both views
-                          <br />
-                          6. You must select exactly the same number of points on both views
-                          <br />
-                          <br />
-                          Current Zone: <strong>{currentZone.name}</strong>
-                          <br />
-                          Camera points: {cameraZonePoints.length}
-                          <br />
-                          Map points: {mapZonePoints.length} of {cameraZonePoints.length}
-                        </p>
-                      </div>
-
-                      <div className="flex justify-center gap-4">
-                        <Button
-                          variant="outline"
-                          onClick={handleSwitchMappingMode}
-                          disabled={zoneMappingMode === "camera" && cameraZonePoints.length < 3}
-                        >
-                          Switch to {zoneMappingMode === "camera" ? "Map" : "Camera"} View
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={handleRemoveLastPoint}
-                          disabled={zoneMappingMode === "camera" ? cameraZonePoints.length === 0 : mapZonePoints.length === 0}
-                        >
-                          Remove Last Point
-                        </Button>
-                        {zoneMappingMode === "camera" && cameraZonePoints.length >= 3 && !showPointPrompt && (
-                          <Button
-                            variant="outline"
-                            onClick={handleEarlyComplete}
-                          >
-                            Done
-                          </Button>
-                        )}
-                        <Button
-                          onClick={handleCompleteZoneMapping}
-                          disabled={cameraZonePoints.length < 3 || mapZonePoints.length < 3}
-                        >
-                          Complete Zone Mapping
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {currentStep === 3 && currentZone && isZoneMappingComplete && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2 md:col-span-2">
-                          <Label htmlFor="object-name">Object Name</Label>
-                          <Input
-                            id="object-name"
-                            value={objectName}
-                            onChange={(e) => setObjectName(e.target.value)}
-                            placeholder="e.g., Shelf A"
-                          />
-                        </div>
-
-                        <div className="flex items-end space-x-2">
-                          <Button
-                            className="flex-1"
-                            onClick={handleObjectCreate}
-                            disabled={!objectName}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Object
-                          </Button>
-
-                          <Button
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => {
-                              setCurrentStep(1)
-                              setCurrentZone(null)
-                              setIsZoneMappingComplete(false)
-                            }}
-                          >
-                            Back to Zones
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="bg-muted/50 p-4 rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          <strong>Instructions:</strong> Enter a name for your object and click "Add Object" to proceed to mapping.
-                          <br />
-                          Current Zone: <strong>{currentZone.name}</strong>
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {currentStep === 4 && selectedObject && (
-                    <div className="space-y-4">
-                      <div className="bg-muted/50 p-4 rounded-md">
-                        <p className="text-sm text-muted-foreground">
-                          <strong>Instructions:</strong>
-                          <br />
-                          1. First, select 4 points on the camera view (numbered 1-4)
-                          <br />
-                          2. Then, select the corresponding 4 points on the map view
-                          <br />
-                          3. Points must be selected inside the mapped zone
-                          <br />
-                          4. Points should be selected in the same order on both views
-                          <br />
-                          <br />
-                          Current Object: <strong>{selectedObject.name.split('_')[1]}</strong>
-                          <br />
-                          Camera points: {selectedObject.src_points.length}/4
-                          <br />
-                          Map points: {selectedObject.dst_points.length}/4
-                          <br />
-                          {selectionSequence === "camera" ? (
-                            <span className="text-primary">Selecting camera points...</span>
-                          ) : (
-                            <span className="text-primary">Selecting map points...</span>
-                          )}
-                        </p>
-                      </div>
-
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedObject(null)
-                            setIsMappingMode(false)
-                            setSelectionSequence("camera")
-                            setCurrentStep(3)
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={handleMappingComplete}
-                          disabled={selectedObject.src_points.length !== 4 || selectedObject.dst_points.length !== 4}
-                        >
-                          Complete Mapping
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </TabsContent>
-
-                {renderZonesTab()}
-
-                <TabsContent value="testing" className="space-y-4">
-                  <div className="grid grid-cols-1 gap-6">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-medium">Camera View</h3>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleTestMapping}
-                          disabled={!selectedCamera || isTesting}
-                        >
-                          {isTesting ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Testing...
-                            </>
-                          ) : (
-                            <>
-                              <Play className="h-4 w-4 mr-2" />
-                              Test Mapping
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      <div className="relative w-full h-[500px] bg-muted rounded-md overflow-hidden">
-                        {captureError ? (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                            <AlertCircle className="h-8 w-8 text-destructive mb-2" />
-                            <p className="text-destructive font-medium">Failed to capture frame</p>
-                            <p className="text-sm text-muted-foreground">{captureError}</p>
-                          </div>
-                        ) : cameraFrame ? (
-                          <div className="relative w-full h-full">
-                            <img
-                              src={cameraFrame}
-                              alt="Camera view with mappings"
-                              className="w-full h-full object-contain"
-                            />
-                          </div>
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <p className="text-muted-foreground">No camera frame available</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-muted/50 p-4 rounded-md">
-                    <p className="text-sm text-muted-foreground">
-                      <strong>Instructions:</strong>
-                      <br />
-                      1. Select a camera from the dropdown above
-                      <br />
-                      2. Click "Test Mapping" to process the camera frame
-                      <br />
-                      3. The system will use the saved homography mappings to overlay the mall map on the camera view
-                      <br />
-                      4. The processed frame will show the mapped zones and objects
-                    </p>
-                  </div>
-                </TabsContent>
+                {/* ...other tabs... */}
               </Tabs>
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Add mapping mode indicator */}
-      {isMappingMode && selectedObject && (
-        <div className="fixed bottom-4 right-4 bg-background border rounded-lg shadow-lg p-4">
-          <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <p className="font-medium">Mapping: {selectedObject.name.split('_')[1]}</p>
-              <p className="text-sm text-muted-foreground">
-                Camera points: {selectedObject.src_points.length}/4
-                <br />
-                Map points: {selectedObject.dst_points.length}/4
-                <br />
-                {selectionSequence === "camera" ? (
-                  <span className="text-primary">Selecting camera points...</span>
-                ) : (
-                  <span className="text-primary">Selecting map points...</span>
-                )}
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedObject(null)
-                setIsMappingMode(false)
-                setSelectionSequence("camera")
-                setCurrentStep(3)
+      {/* OUTSIDE Card: Only the mapping/canvas area scaling container */}
+      {selectedCamera && (
+        <div
+          style={{
+            width: '100vw',
+            aspectRatio: '32/9',
+            background: '#f3f3f3',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            padding: 0,
+            margin: 0,
+          }}
+        >
+          <div style={{ width: '100%', height: '100%', display: 'flex' }}>
+            {/* Mall Map */}
+            <div
+              style={{
+                width: '50%',
+                height: '100%',
+                background: '#f3f3f3',
+                position: 'relative',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                flexShrink: 0,
               }}
             >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleMappingComplete}
-              disabled={selectedObject.src_points.length !== 4 || selectedObject.dst_points.length !== 4}
-            >
-              Complete
-            </Button>
+              {mallMapImage ? (
+                <div className="relative w-full h-full">
+                  <img
+                    src={mallMapImage}
+                    alt="Mall top-view map"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                    }}
+                    onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "map") : handleImageClick(e, "map")}
+                    onMouseMove={(e) => handleMouseMove(e, "map")}
+                    onMouseLeave={handleMouseLeave}
+                    onLoad={e => {
+                      setImgSize({
+                        width: e.currentTarget.naturalWidth,
+                        height: e.currentTarget.naturalHeight
+                      });
+                      setMallMapNaturalWidth(e.currentTarget.naturalWidth);
+                      setMallMapNaturalHeight(e.currentTarget.naturalHeight);
+                      console.log("[DEBUG] Mall map natural size:", e.currentTarget.naturalWidth, e.currentTarget.naturalHeight);
+                    }}
+                  />
+                  {/* Overlay points and canvas here if needed */}
+                  {currentStep === 2 && mapZonePoints.map((point, index) => {
+                    // Convert image coordinates to display coordinates
+                    const container = document.querySelector('.relative.w-full.h-full');
+                    const img = container?.querySelector('img');
+                    let displayX = point.x;
+                    let displayY = point.y;
+                    if (img && mallMapNaturalWidth && mallMapNaturalHeight) {
+                      const rect = img.getBoundingClientRect();
+                      const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+                      const displayWidth = mallMapNaturalWidth * scaleImg;
+                      const displayHeight = mallMapNaturalHeight * scaleImg;
+                      const offsetX = (rect.width - displayWidth) / 2;
+                      const offsetY = (rect.height - displayHeight) / 2;
+                      displayX = point.x * scaleImg + offsetX;
+                      displayY = point.y * scaleImg + offsetY;
+                    }
+                    return (
+                      <div
+                        key={index}
+                        className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                        style={{
+                          left: `${displayX}px`,
+                          top: `${displayY}px`,
+                        }}
+                      >
+                        <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                          {index + 1}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {hoverPoint && selectionSequence === "map" && mapZonePoints.length < cameraZonePoints.length && (
+                    <div
+                      className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                      style={{
+                        left: `${hoverPoint.x}px`,
+                        top: `${hoverPoint.y}px`,
+                      }}
+                    >
+                      <div className="w-full h-full rounded-full border-2 border-dashed border-primary bg-primary/20" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="text-muted-foreground">Loading mall map...</p>
+                </div>
+              )}
+            </div>
+            {/* Camera View with header */}
+            <div style={{ width: '50%', height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+              {/* Header row for camera name and refresh button - absolutely positioned */}
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                zIndex: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                pointerEvents: 'auto',
+                background: 'rgba(255,255,255,0.85)',
+                borderTopLeftRadius: '8px',
+                borderTopRightRadius: '8px',
+              }}>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">
+                    {selectedCamera?.name}
+                  </Badge>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (selectedCamera) {
+                      getCameraFrame(selectedCamera)
+                    }
+                  }}
+                  disabled={isCapturing}
+                >
+                  {isCapturing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Capturing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh Frame
+                    </>
+                  )}
+                </Button>
+              </div>
+              {/* Camera Frame Box */}
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  background: "#f3f3f3",
+                  position: "relative",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                {captureError ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                    <AlertCircle className="h-8 w-8 text-destructive mb-2" />
+                    <p className="text-destructive font-medium">Failed to capture frame</p>
+                    <p className="text-sm text-muted-foreground">{captureError}</p>
+                  </div>
+                ) : cameraFrame ? (
+                  <div className="relative w-full h-full">
+                    <img
+                      src={cameraFrame}
+                      alt="Camera view"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                      }}
+                      onClick={(e) => currentStep === 2 ? handleZonePointMapping(e, "camera") : handleImageClick(e, "camera")}
+                      onMouseMove={(e) => handleMouseMove(e, "camera")}
+                      onMouseLeave={handleMouseLeave}
+                      onLoad={e => {
+                        const img = e.currentTarget;
+                        console.log("[DEBUG] Camera frame natural size:", img.naturalWidth, img.naturalHeight);
+                      }}
+                    />
+                    {/* Overlay points and canvas here if needed */}
+                    {currentStep === 2 && cameraZonePoints.map((point, index) => (
+                      <div
+                        key={index}
+                        className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                        style={{
+                          left: `${point.x}px`,
+                          top: `${point.y}px`,
+                        }}
+                      >
+                        <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                          {index + 1}
+                        </div>
+                      </div>
+                    ))}
+                    {hoverPoint && selectionSequence === "camera" && !showPointPrompt && (
+                      <div
+                        className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                        style={{
+                          left: `${hoverPoint.x}px`,
+                          top: `${hoverPoint.y}px`,
+                        }}
+                      >
+                        <div className="w-full h-full rounded-full border-2 border-dashed border-primary bg-primary/20" />
+                      </div>
+                    )}
+                    {showPointPrompt && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-background/95 border-t p-4">
+                        <form onSubmit={handleAdditionalPointsSubmit} className="space-y-4">
+                          <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                              <Label htmlFor="additional-points">How many more points do you want to add?</Label>
+                              <Input
+                                id="additional-points"
+                                type="number"
+                                min="0"
+                                value={additionalPoints}
+                                onChange={(e) => setAdditionalPoints(parseInt(e.target.value) || 0)}
+                                className="mt-1"
+                              />
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <Button type="submit" disabled={additionalPoints < 0}>
+                                Continue
+                              </Button>
+                              <Button type="button" variant="outline" onClick={handleEarlyComplete}>
+                                Done
+                              </Button>
+                            </div>
+                          </div>
+                        </form>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <p className="text-muted-foreground">No camera frame available</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
-
-      {/* Add mapping prompt dialog */}
-      {showMappingPrompt && (
+      {/* Prompt handler after 4 points */}
+      {showPointLimitPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-background p-6 rounded-lg shadow-lg max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4">Add More Points</h3>
+            <p className="text-muted-foreground mb-4">You have selected 4 points. How many more points do you want to map?</p>
+            <form onSubmit={e => { e.preventDefault(); handlePointLimitPrompt(Number(pendingObjectPoints)); }}>
+              <input type="number" min="0" value={pendingObjectPoints} onChange={e => setPendingObjectPoints(Number(e.target.value))} className="border rounded px-2 py-1 w-20 mr-4" />
+              <Button type="submit">Continue</Button>
+              <Button type="button" variant="outline" className="ml-2" onClick={() => handlePointLimitPrompt(0)}>Cancel</Button>
+            </form>
+          </div>
+        </div>
+      )}
+      {showAnotherObjectPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-background p-6 rounded-lg shadow-lg max-w-md w-full">
             <h3 className="text-lg font-semibold mb-4">Object Mapping Complete</h3>
-            <p className="text-muted-foreground mb-6">
-              Do you want to map another object or save the current mapping?
-            </p>
+            <p className="text-muted-foreground mb-4">Do you want to map another object?</p>
             <div className="flex justify-end gap-4">
-              <Button
-                variant="outline"
-                onClick={() => handleMappingPrompt('continue')}
-              >
-                Map Another Object
-              </Button>
-              <Button
-                onClick={() => handleMappingPrompt('save')}
-              >
-                Save Mapping
-              </Button>
+              <Button variant="outline" onClick={() => handleAnotherObjectPrompt(true)}>Map Another Object</Button>
+              <Button onClick={() => handleAnotherObjectPrompt(false)}>Finish</Button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Add save prompt dialog */}
-      {showSavePrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-background p-6 rounded-lg shadow-lg max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-4">Save Mapping</h3>
-            <p className="text-muted-foreground mb-6">
-              {areAllObjectsInZone()
-                ? "All objects are within their zones. Would you like to save the mapping?"
-                : "Some objects are outside their zones. Please ensure all objects are within their zones before saving."}
-            </p>
-            <div className="flex justify-end gap-4">
-              <Button
-                variant="outline"
-                onClick={() => setShowSavePrompt(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (areAllObjectsInZone()) {
-                    handleSaveHomography()
-                    setShowSavePrompt(false)
-                  }
-                }}
-                disabled={!areAllObjectsInZone()}
-              >
-                Save Mapping
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add save button for all cameras */}
-      {mappingObjects.length > 0 && (
-        <div className="fixed bottom-4 left-4">
-          <Button
-            onClick={() => setShowSavePrompt(true)}
-            disabled={!areAllObjectsInZone() || isSaving}
-            className="shadow-lg"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Save Mapping
-              </>
-            )}
-          </Button>
-        </div>
-      )}
-
-      {/* Update point markers to be more prominent */}
-      <style jsx global>{`
-        .point-marker {
-          width: 40px !important;
-          height: 40px !important;
-          margin-left: -20px !important;
-          margin-top: -20px !important;
-          border-width: 3px !important;
-          font-size: 20px !important;
-          font-weight: bold !important;
-          box-shadow: 0 0 10px rgba(0, 0, 0, 0.3) !important;
-          z-index: 10 !important;
-        }
-      `}</style>
-
-      {/* Update point marker rendering for object mapping */}
-      {currentStep === 4 && selectedObject && (
-        <>
-          {selectedObject.src_points.map((point, index) => (
-            <div
-              key={`src-${index}`}
-              className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-              style={{
-                left: `${point.x}px`,
-                top: `${point.y}px`,
-              }}
-            >
-              <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
-                {index + 1}
-              </div>
-            </div>
-          ))}
-          {selectedObject.dst_points.map((point, index) => (
-            <div
-              key={`dst-${index}`}
-              className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-              style={{
-                left: `${point.x}px`,
-                top: `${point.y}px`,
-              }}
-            >
-              <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
-                {index + 1}
-              </div>
-            </div>
-          ))}
-          {hoverPoint && selectionSequence === "map" && selectedObject.dst_points.length < 4 && (
-            <div
-              className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-              style={{
-                left: `${hoverPoint.x}px`,
-                top: `${hoverPoint.y}px`,
-              }}
-            >
-              <div className="w-full h-full rounded-full border-2 border-dashed border-primary bg-primary/20 flex items-center justify-center text-primary text-xs font-bold">
-                {selectedObject.dst_points.length + 1}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Add temporary error message */}
-      {tempError && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-destructive text-destructive-foreground px-4 py-2 rounded-md shadow-lg z-50 animate-fade-out">
-          <p className="text-sm font-medium">{tempError}</p>
-        </div>
-      )}
-
-      {/* Add point counter */}
-      {currentStep === 4 && selectedObject && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-background border px-4 py-2 rounded-md shadow-lg z-50">
-          <p className="text-sm font-medium">
-            {selectionSequence === "camera"
-              ? `Camera Point ${selectedObject.src_points.length + 1} of 4`
-              : `Map Point ${selectedObject.dst_points.length + 1} of 4`}
-          </p>
-        </div>
-      )}
+      {/* ...rest of the code... */}
     </AuthenticatedLayout>
   )
 }
@@ -2205,4 +2064,3 @@ if (typeof document !== 'undefined') {
   styleSheet.textContent = styles
   document.head.appendChild(styleSheet)
 }
-
