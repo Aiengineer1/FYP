@@ -126,18 +126,6 @@ export default function HomographyMappingPage() {
   // Add state for testing tab
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
 
-  // NEW: Two lists for zone mapping - display points (for drawing) and image points (for backend)
-  const [cameraZoneDisplayPoints, setCameraZoneDisplayPoints] = useState<Point[]>([]);
-  const [cameraZoneImagePoints, setCameraZoneImagePoints] = useState<Point[]>([]);
-  const [mapZoneDisplayPoints, setMapZoneDisplayPoints] = useState<Point[]>([]);
-  const [mapZoneImagePoints, setMapZoneImagePoints] = useState<Point[]>([]);
-
-  // NEW: Two lists for object mapping - display points (for drawing) and image points (for backend)
-  const [objectCameraDisplayPoints, setObjectCameraDisplayPoints] = useState<Point[]>([]);
-  const [objectCameraImagePoints, setObjectCameraImagePoints] = useState<Point[]>([]);
-  const [objectMapDisplayPoints, setObjectMapDisplayPoints] = useState<Point[]>([]);
-  const [objectMapImagePoints, setObjectMapImagePoints] = useState<Point[]>([]);
-
   // Handler for point limit prompt
   const handlePointLimitPrompt = (additional: number) => {
     if (additional > 0) {
@@ -188,69 +176,6 @@ export default function HomographyMappingPage() {
     const y = (point.y - offsetY) / scaleImg;
     return { x: Math.max(0, Math.min(naturalWidth, x)), y: Math.max(0, Math.min(naturalHeight, y)) };
   }
-
-  // NEW: Unified coordinate system for both camera and mall map
-  const getRealImageCoordinates = (event: React.MouseEvent, img: HTMLImageElement, targetWidth: number = 1280, targetHeight: number = 720) => {
-    const rect = img.getBoundingClientRect();
-
-    // Get click position relative to image container
-    const clickX = event.clientX - rect.left;
-    const clickY = event.clientY - rect.top;
-
-    // Calculate scale factors for object-fit: contain
-    const scaleX = rect.width / targetWidth;
-    const scaleY = rect.height / targetHeight;
-    const scale = Math.min(scaleX, scaleY); // object-fit: contain uses minimum scale
-
-    // Calculate actual displayed image dimensions
-    const displayedWidth = targetWidth * scale;
-    const displayedHeight = targetHeight * scale;
-
-    // Calculate centering offsets (letterboxing/pillarboxing)
-    const offsetX = (rect.width - displayedWidth) / 2;
-    const offsetY = (rect.height - displayedHeight) / 2;
-
-    // Check if click is within the actual image area
-    if (clickX < offsetX || clickX > offsetX + displayedWidth ||
-      clickY < offsetY || clickY > offsetY + displayedHeight) {
-      console.warn('Click outside image bounds');
-      return null;
-    }
-
-    // Convert to target coordinate system (1280x720)
-    const imageX = (clickX - offsetX) / scale;
-    const imageY = (clickY - offsetY) / scale;
-
-    // Clamp to image boundaries
-    const clampedX = Math.max(0, Math.min(targetWidth, Math.round(imageX)));
-    const clampedY = Math.max(0, Math.min(targetHeight, Math.round(imageY)));
-
-    return {
-      x: clampedX,
-      y: clampedY,
-      scale: scale,
-      offset: { x: offsetX, y: offsetY },
-      withinBounds: true
-    };
-  };
-
-  // NEW: Convert 1280x720 coordinates back to display coordinates for rendering
-  const getDisplayCoordinates = (imagePoint: Point, img: HTMLImageElement, targetWidth: number = 1280, targetHeight: number = 720) => {
-    const rect = img.getBoundingClientRect();
-    const scaleX = rect.width / targetWidth;
-    const scaleY = rect.height / targetHeight;
-    const scale = Math.min(scaleX, scaleY);
-
-    const displayedWidth = targetWidth * scale;
-    const displayedHeight = targetHeight * scale;
-    const offsetX = (rect.width - displayedWidth) / 2;
-    const offsetY = (rect.height - displayedHeight) / 2;
-
-    return {
-      x: imagePoint.x * scale + offsetX,
-      y: imagePoint.y * scale + offsetY
-    };
-  };
 
   // Fetch cameras and mall map when component mounts
   useEffect(() => {
@@ -510,65 +435,52 @@ export default function HomographyMappingPage() {
     return { x, y, rect };
   };
 
-  // FIXED: Two-list approach for zone mapping - display points for drawing, image points for backend
+  // Update handleZonePointMapping for accurate click mapping on mall map
   const handleZonePointMapping = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
     if (!currentZone || currentStep !== 2 || type !== zoneMappingMode) return;
     if (type === "camera" && showPointPrompt) return;
-    if (type === "map" && mapZoneDisplayPoints.length >= cameraZoneDisplayPoints.length) return;
+    if (type === "map" && mapZonePoints.length >= cameraZonePoints.length) return;
 
     const img = event.currentTarget;
-    const rect = img.getBoundingClientRect();
+    let { x, y, rect } = getOriginalCoords(event, img);
 
-    // Get actual display coordinates (where user clicked)
-    const displayX = event.clientX - rect.left;
-    const displayY = event.clientY - rect.top;
-
-    // Create display point (for drawing)
-    const displayPoint: Point = {
-      x: displayX,
-      y: displayY,
-      id: Date.now()
-    };
-
-    // Get scaled coordinates (1280x720) for backend
-    const imageCoordinates = getRealImageCoordinates(event, img, 1280, 720);
-    if (!imageCoordinates) {
-      console.warn(`Click outside ${type} image bounds`);
-      return;
+    if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
+      // Accurate mapping for object-contain images
+      const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+      const displayWidth = mallMapNaturalWidth * scaleImg;
+      const displayHeight = mallMapNaturalHeight * scaleImg;
+      const offsetX = (rect.width - displayWidth) / 2;
+      const offsetY = (rect.height - displayHeight) / 2;
+      x = (event.clientX - rect.left - offsetX) / (scale * scaleImg);
+      y = (event.clientY - rect.top - offsetY) / (scale * scaleImg);
+      // Clamp to image bounds
+      x = Math.max(0, Math.min(mallMapNaturalWidth, x));
+      y = Math.max(0, Math.min(mallMapNaturalHeight, y));
+      x = Math.round(x);
+      y = Math.round(y);
     }
 
-    const imagePoint: Point = {
-      x: imageCoordinates.x,
-      y: imageCoordinates.y,
-      id: displayPoint.id // Same ID for both points
-    };
-
     if (type === "camera") {
-      // Add to both display and image point lists
-      setCameraZoneDisplayPoints(prev => [...prev, displayPoint]);
-      setCameraZoneImagePoints(prev => [...prev, imagePoint]);
-
-      const newDisplayPoints = [...cameraZoneDisplayPoints, displayPoint];
-      if (newDisplayPoints.length === 5) {
+      const newPoints = [...cameraZonePoints, { x, y }];
+      setCameraZonePoints(newPoints);
+      if (newPoints.length === 5) {
         setShowPointPrompt(true);
       }
-      if (additionalPoints > 0 && newDisplayPoints.length === 5 + additionalPoints) {
+      if (additionalPoints > 0 && newPoints.length === 5 + additionalPoints) {
         setZoneMappingMode("map");
         setShowPointPrompt(false);
       }
     } else {
-      // Add to both display and image point lists
-      setMapZoneDisplayPoints(prev => [...prev, displayPoint]);
-      setMapZoneImagePoints(prev => [...prev, imagePoint]);
+      setMapZonePoints(prev => [...prev, { x, y }]);
     }
   };
 
-  // FIXED: Complete zone mapping using image points (1280x720) for backend
+  // Add function to complete zone mapping
   const handleCompleteZoneMapping = () => {
-    if (currentZone && cameraZoneDisplayPoints.length >= 3 && mapZoneDisplayPoints.length >= 3) {
+    if (currentZone && cameraZonePoints.length >= 3 && mapZonePoints.length >= 3) {
       const updatedZone = {
         ...currentZone,
-        points: mapZoneImagePoints // Store image points (1280x720) as the final zone points
+        points: mapZonePoints // Store map points as the final zone points
       }
 
       setZones(prev => prev.map(z =>
@@ -577,10 +489,8 @@ export default function HomographyMappingPage() {
 
       setIsZoneMappingComplete(true)
       setCurrentStep(3) // Move to object creation step
-      setCameraZoneDisplayPoints([])
-      setCameraZoneImagePoints([])
-      setMapZoneDisplayPoints([])
-      setMapZoneImagePoints([])
+      setCameraZonePoints([])
+      setMapZonePoints([])
       setZoneMappingMode("camera")
 
       toast({
@@ -598,7 +508,7 @@ export default function HomographyMappingPage() {
 
   // Add function to switch mapping mode
   const handleSwitchMappingMode = () => {
-    if (zoneMappingMode === "camera" && cameraZoneDisplayPoints.length === 0) {
+    if (zoneMappingMode === "camera" && cameraZonePoints.length === 0) {
       toast({
         title: "Error",
         description: "Please select at least one point on camera view first",
@@ -612,11 +522,9 @@ export default function HomographyMappingPage() {
   // Add function to remove last point
   const handleRemoveLastPoint = () => {
     if (zoneMappingMode === "camera") {
-      setCameraZoneDisplayPoints(prev => prev.slice(0, -1))
-      setCameraZoneImagePoints(prev => prev.slice(0, -1))
+      setCameraZonePoints(prev => prev.slice(0, -1))
     } else {
-      setMapZoneDisplayPoints(prev => prev.slice(0, -1))
-      setMapZoneImagePoints(prev => prev.slice(0, -1))
+      setMapZonePoints(prev => prev.slice(0, -1))
     }
   }
 
@@ -640,91 +548,66 @@ export default function HomographyMappingPage() {
     setSelectionSequence("camera")
     setObjectName("")
     setCurrentStep(4)
-
-    // Reset object point lists for new object
-    setObjectCameraDisplayPoints([])
-    setObjectCameraImagePoints([])
-    setObjectMapDisplayPoints([])
-    setObjectMapImagePoints([])
   }
 
-  // FIXED: Two-list approach for object mapping - display points for drawing, image points for backend
+  // Update handleImageClick for flexible object mapping
   const handleImageClick = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
     if (!isSelecting && !isMappingMode) return;
     if (isMappingMode && type !== selectionSequence) return;
     if (!selectedObject) return;
 
     const img = event.currentTarget;
-    const rect = img.getBoundingClientRect();
+    let x = event.nativeEvent.offsetX;
+    let y = event.nativeEvent.offsetY;
 
-    // Get actual display coordinates (where user clicked)
-    const displayX = event.clientX - rect.left;
-    const displayY = event.clientY - rect.top;
-
-    // Create display point (for drawing)
-    const displayPoint: Point = {
-      x: displayX,
-      y: displayY,
-      id: Date.now()
-    };
-
-    // Get scaled coordinates (1280x720) for backend
-    const imageCoordinates = getRealImageCoordinates(event, img, 1280, 720);
-    if (!imageCoordinates) {
-      console.warn(`Click outside ${type} image bounds`);
-      return;
+    // For map, keep existing scaling logic
+    if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
+      const rect = img.getBoundingClientRect();
+      const scaleImgX = rect.width / mallMapNaturalWidth;
+      const scaleImgY = rect.height / mallMapNaturalHeight;
+      const displayWidth = mallMapNaturalWidth * scaleImgX;
+      const displayHeight = mallMapNaturalHeight * scaleImgY;
+      const offsetX = (rect.width - displayWidth) / 2;
+      const offsetY = (rect.height - displayHeight) / 2;
+      x = (event.clientX - rect.left - offsetX) / scaleImgX;
+      y = (event.clientY - rect.top - offsetY) / scaleImgY;
+      x = Math.max(0, Math.min(mallMapNaturalWidth, x));
+      y = Math.max(0, Math.min(mallMapNaturalHeight, y));
+      x = Math.round(x);
+      y = Math.round(y);
     }
-
-    const imagePoint: Point = {
-      x: imageCoordinates.x,
-      y: imageCoordinates.y,
-      id: displayPoint.id // Same ID for both points
-    };
 
     if (isMappingMode && selectedObject) {
       const currentZone = zones.find(zone => selectedObject.name.startsWith(zone.name));
       if (!currentZone) return;
 
-      if (type === "camera") {
-        // Add to both display and image point lists
-        setObjectCameraDisplayPoints(prev => [...prev, displayPoint]);
-        setObjectCameraImagePoints(prev => [...prev, imagePoint]);
-
-        const newDisplayPoints = [...objectCameraDisplayPoints, displayPoint];
-        const newImagePoints = [...objectCameraImagePoints, imagePoint];
-
-        // Update selectedObject with image points (for backend)
-        const newSrcPoints = newImagePoints.map((p, index) => ({ ...p, id: index + 1 }));
+      if (type === "camera" && selectedObject.src_points.length < objectPointLimit) {
+        const newSrcPoints = [...selectedObject.src_points, { x, y, id: selectedObject.src_points.length + 1 }];
         setSelectedObject(prev => ({ ...prev!, src_points: newSrcPoints }));
-
-        if (newDisplayPoints.length === 4) {
+        if (newSrcPoints.length === 4) {
           setShowPointLimitPrompt(true);
-        } else if (newDisplayPoints.length === objectPointLimit) {
+        } else if (newSrcPoints.length === objectPointLimit) {
           setSelectionSequence("map");
           toast({ title: "Camera points complete", description: "Now select corresponding points on the map view" });
         }
-      } else if (type === "map") {
-        // Check if point is inside zone using image coordinates (1280x720)
-        if (!isPointInsideZone(imagePoint, currentZone)) {
-          showTemporaryError("Point is outside the zone. Please select within the zone boundaries.");
+      } else if (type === "camera" && selectedObject.src_points.length >= 4 && selectedObject.src_points.length < objectPointLimit) {
+        const newSrcPoints = [...selectedObject.src_points, { x, y, id: selectedObject.src_points.length + 1 }];
+        setSelectedObject(prev => ({ ...prev!, src_points: newSrcPoints }));
+        if (newSrcPoints.length === objectPointLimit) {
+          setSelectionSequence("map");
+          toast({ title: "Camera points complete", description: "Now select corresponding points on the map view" });
+        }
+      } else if (type === "map" && selectedObject.dst_points.length < objectPointLimit) {
+        if (!isPointInsideZone({ x, y }, currentZone)) {
+          showTemporaryError("You are out of zone. Please select the object inside the zone.");
           return;
         }
-
-        // Add to both display and image point lists
-        setObjectMapDisplayPoints(prev => [...prev, displayPoint]);
-        setObjectMapImagePoints(prev => [...prev, imagePoint]);
-
-        const newDisplayPoints = [...objectMapDisplayPoints, displayPoint];
-        const newImagePoints = [...objectMapImagePoints, imagePoint];
-
-        // Update selectedObject with image points (for backend)
-        const newDstPoints = newImagePoints.map((p, index) => ({ ...p, id: index + 1 }));
+        const newDstPoints = [...selectedObject.dst_points, { x, y, id: selectedObject.dst_points.length + 1 }];
         const updatedObject = { ...selectedObject, dst_points: newDstPoints };
         setSelectedObject(updatedObject);
         setMappingObjects(prev => prev.map(obj => obj.name === selectedObject.name ? updatedObject : obj));
-
-        if (newDisplayPoints.length === objectPointLimit) {
-          setShowAnotherObjectPrompt(true);
+        if (newDstPoints.length === objectPointLimit) {
+          setShowAnotherObjectPrompt(true); // Show prompt after both camera and map points are done
         }
       }
     }
@@ -772,7 +655,7 @@ export default function HomographyMappingPage() {
     return updatedMapping;
   };
 
-  // FIXED: Send coordinates already in 1280x720 format
+  // --- Backend Payload: Rescale all points to 1280x720 before sending ---
   const handleSaveHomography = async () => {
     if (!selectedCamera) {
       console.log("Debug: No camera selected");
@@ -787,7 +670,11 @@ export default function HomographyMappingPage() {
     try {
       setIsSaving(true);
 
-      // Process all mappings - coordinates are already in 1280x720 format
+      // Get mall map and camera frame img elements
+      const mallImg = document.querySelector('.relative.w-full.h-full img') as HTMLImageElement | null;
+      const camImg = document.querySelector('.relative.w-full.h-full + div img') as HTMLImageElement | null;
+
+      // Process all mappings to ensure they match backend requirements
       const processedMappings = mappingObjects.map(mapping => {
         // Find the zone for this mapping
         const zone = zones.find(z => z.name === mapping.zone_name);
@@ -802,12 +689,19 @@ export default function HomographyMappingPage() {
           return null;
         }
 
-        // Points are already in 1280x720 format, just convert to arrays
-        const src_points = mapping.src_points.map(p => [p.x, p.y]);
-        const dst_points = mapping.dst_points.map(p => [p.x, p.y]);
-
-        // Zone points need to be converted from mapZonePoints (also in 1280x720)
-        const zone_points = (mapping.zone_points.length > 0 ? mapping.zone_points : zone.points).map(p => ({ x: p.x, y: p.y }));
+        // Rescale points for backend
+        const src_points = mapping.src_points.map(p => {
+          const pt = toImageCoords(p, camImg, camImg?.naturalWidth || 1280, camImg?.naturalHeight || 720);
+          return [pt.x, pt.y];
+        });
+        const dst_points = mapping.dst_points.map(p => {
+          const pt = toImageCoords(p, mallImg, mallMapNaturalWidth || 1280, mallMapNaturalHeight || 720);
+          return [pt.x, pt.y];
+        });
+        const zone_points = (mapping.zone_points.length > 0 ? mapping.zone_points : zone.points).map(p => {
+          const pt = toImageCoords(p, mallImg, mallMapNaturalWidth || 1280, mallMapNaturalHeight || 720);
+          return { x: pt.x, y: pt.y };
+        });
 
         // Update the mapping with zone points
         const updatedMapping: ProcessedMapping = {
@@ -929,8 +823,8 @@ export default function HomographyMappingPage() {
     // Check if current zone has at least one complete object mapping
     return mappingObjects.some(obj =>
       obj.name.startsWith(currentZone?.name || '') &&
-      obj.src_points.length === objectPointLimit &&
-      obj.dst_points.length === objectPointLimit
+      obj.src_points.length === 4 &&
+      obj.dst_points.length === 4
     )
   }
 
@@ -1000,17 +894,25 @@ export default function HomographyMappingPage() {
     }
   }
 
-  // FIXED: Hover point handling using actual display coordinates
+  // Add mouse move handler for hover effect
   const handleMouseMove = (event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
     if (!isMappingMode || type !== selectionSequence) return;
-
     const img = event.currentTarget;
-    const rect = img.getBoundingClientRect();
-
-    // Use actual display coordinates for hover
-    const hoverX = event.clientX - rect.left;
-    const hoverY = event.clientY - rect.top;
-    setHoverPoint({ x: hoverX, y: hoverY });
+    let { x, y, rect } = getOriginalCoords(event, img);
+    if (type === "map" && mallMapNaturalWidth && mallMapNaturalHeight) {
+      const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+      const displayWidth = mallMapNaturalWidth * scaleImg;
+      const displayHeight = mallMapNaturalHeight * scaleImg;
+      const offsetX = (rect.width - displayWidth) / 2;
+      const offsetY = (rect.height - displayHeight) / 2;
+      x = (event.clientX - rect.left - offsetX) / (scale * scaleImg);
+      y = (event.clientY - rect.top - offsetY) / (scale * scaleImg);
+      x = Math.max(0, Math.min(mallMapNaturalWidth, x));
+      y = Math.max(0, Math.min(mallMapNaturalHeight, y));
+      x = Math.round(x);
+      y = Math.round(y);
+    }
+    setHoverPoint({ x, y });
   };
 
   // Add mouse leave handler
@@ -1083,7 +985,7 @@ export default function HomographyMappingPage() {
 
   // Add function to handle early completion
   const handleEarlyComplete = () => {
-    if (cameraZoneDisplayPoints.length >= 3) {
+    if (cameraZonePoints.length >= 3) {
       setZoneMappingMode("map")
       setShowPointPrompt(false)
     } else {
@@ -1881,9 +1783,9 @@ export default function HomographyMappingPage() {
                           <br />
                           Current Zone: <strong>{currentZone.name}</strong>
                           <br />
-                          Camera points: {cameraZoneDisplayPoints.length}
+                          Camera points: {cameraZonePoints.length}
                           <br />
-                          Map points: {mapZoneDisplayPoints.length} of {cameraZoneDisplayPoints.length}
+                          Map points: {mapZonePoints.length} of {cameraZonePoints.length}
                         </p>
                       </div>
 
@@ -1891,18 +1793,18 @@ export default function HomographyMappingPage() {
                         <Button
                           variant="outline"
                           onClick={handleSwitchMappingMode}
-                          disabled={zoneMappingMode === "camera" && cameraZoneDisplayPoints.length < 3}
+                          disabled={zoneMappingMode === "camera" && cameraZonePoints.length < 3}
                         >
                           Switch to {zoneMappingMode === "camera" ? "Map" : "Camera"} View
                         </Button>
                         <Button
                           variant="outline"
                           onClick={handleRemoveLastPoint}
-                          disabled={zoneMappingMode === "camera" ? cameraZoneDisplayPoints.length === 0 : mapZoneDisplayPoints.length === 0}
+                          disabled={zoneMappingMode === "camera" ? cameraZonePoints.length === 0 : mapZonePoints.length === 0}
                         >
                           Remove Last Point
                         </Button>
-                        {zoneMappingMode === "camera" && cameraZoneDisplayPoints.length >= 3 && !showPointPrompt && (
+                        {zoneMappingMode === "camera" && cameraZonePoints.length >= 3 && !showPointPrompt && (
                           <Button
                             variant="outline"
                             onClick={handleEarlyComplete}
@@ -1912,7 +1814,7 @@ export default function HomographyMappingPage() {
                         )}
                         <Button
                           onClick={handleCompleteZoneMapping}
-                          disabled={cameraZoneDisplayPoints.length < 3 || mapZoneDisplayPoints.length < 3}
+                          disabled={cameraZonePoints.length < 3 || mapZonePoints.length < 3}
                         >
                           Complete Zone Mapping
                         </Button>
@@ -1984,13 +1886,13 @@ export default function HomographyMappingPage() {
                           <br />
                           Current Object: <strong>{selectedObject.name.split('_')[1]}</strong>
                           <br />
-                          Camera points: {objectCameraDisplayPoints.length}/{objectPointLimit}
+                          Camera points: {selectedObject.src_points.length}/{objectPointLimit}
                           <br />
-                          Map points: {objectMapDisplayPoints.length}/{objectPointLimit}
+                          Map points: {selectedObject.dst_points.length}/{objectPointLimit}
                           <br />
-                          {isMappingMode && selectedObject && selectionSequence === "map" && objectMapDisplayPoints.length < objectPointLimit ? (
+                          {isMappingMode && selectedObject && selectionSequence === "map" && selectedObject.dst_points.length < objectPointLimit ? (
                             <span className="text-primary">Selecting map points...</span>
-                          ) : isMappingMode && selectedObject && selectionSequence === "camera" && objectCameraDisplayPoints.length < objectPointLimit ? (
+                          ) : isMappingMode && selectedObject && selectionSequence === "camera" && selectedObject.src_points.length < objectPointLimit ? (
                             <span className="text-primary">Selecting camera points...</span>
                           ) : null}
                         </p>
@@ -2096,14 +1998,28 @@ export default function HomographyMappingPage() {
                                 }}
                               />
                               {/* Overlay points and canvas here if needed */}
-                              {currentStep === 2 && mapZoneDisplayPoints.map((point, index) => {
+                              {currentStep === 2 && mapZonePoints.map((point, index) => {
+                                // Convert image coordinates to display coordinates for drawing
+                                let displayX = point.x;
+                                let displayY = point.y;
+                                const img = document.querySelector('.relative.w-full.h-full img') as HTMLImageElement | null;
+                                if (img && mallMapNaturalWidth && mallMapNaturalHeight) {
+                                  const rect = img.getBoundingClientRect();
+                                  const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+                                  const displayWidth = mallMapNaturalWidth * scaleImg;
+                                  const displayHeight = mallMapNaturalHeight * scaleImg;
+                                  const offsetX = (rect.width - displayWidth) / 2;
+                                  const offsetY = (rect.height - displayHeight) / 2;
+                                  displayX = point.x * scaleImg + offsetX;
+                                  displayY = point.y * scaleImg + offsetY;
+                                }
                                 return (
                                   <div
                                     key={index}
                                     className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
                                     style={{
-                                      left: `${point.x}px`,
-                                      top: `${point.y}px`,
+                                      left: `${displayX}px`,
+                                      top: `${displayY}px`,
                                     }}
                                   >
                                     <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
@@ -2112,14 +2028,28 @@ export default function HomographyMappingPage() {
                                   </div>
                                 );
                               })}
-                              {currentStep === 4 && selectedObject && objectMapDisplayPoints.map((point, index) => {
+                              {currentStep === 4 && selectedObject && selectedObject.dst_points.map((point, index) => {
+                                // Use the same scaling logic as zone mapping
+                                let displayX = point.x;
+                                let displayY = point.y;
+                                const img = document.querySelector('.relative.w-full.h-full img') as HTMLImageElement | null;
+                                if (img && mallMapNaturalWidth && mallMapNaturalHeight) {
+                                  const rect = img.getBoundingClientRect();
+                                  const scaleImg = Math.min(rect.width / mallMapNaturalWidth, rect.height / mallMapNaturalHeight);
+                                  const displayWidth = mallMapNaturalWidth * scaleImg;
+                                  const displayHeight = mallMapNaturalHeight * scaleImg;
+                                  const offsetX = (rect.width - displayWidth) / 2;
+                                  const offsetY = (rect.height - displayHeight) / 2;
+                                  displayX = point.x * scaleImg + offsetX;
+                                  displayY = point.y * scaleImg + offsetY;
+                                }
                                 return (
                                   <div
                                     key={index}
                                     className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
                                     style={{
-                                      left: `${point.x}px`,
-                                      top: `${point.y}px`,
+                                      left: `${displayX}px`,
+                                      top: `${displayY}px`,
                                     }}
                                   >
                                     <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
@@ -2128,7 +2058,7 @@ export default function HomographyMappingPage() {
                                   </div>
                                 );
                               })}
-                              {hoverPoint && selectionSequence === "map" && mapZoneDisplayPoints.length < cameraZoneDisplayPoints.length && (
+                              {hoverPoint && selectionSequence === "map" && mapZonePoints.length < cameraZonePoints.length && (
                                 <div
                                   className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
                                   style={{
@@ -2229,14 +2159,27 @@ export default function HomographyMappingPage() {
                                   }}
                                 />
                                 {/* Overlay points and canvas here if needed */}
-                                {currentStep === 2 && cameraZoneDisplayPoints.map((point, index) => {
+                                {currentStep === 2 && cameraZonePoints.map((point, index) => {
+                                  let displayX = point.x;
+                                  let displayY = point.y;
+                                  const img = document.querySelector('.relative.w-full.h-full + div img') as HTMLImageElement | null;
+                                  if (img && img.naturalWidth && img.naturalHeight) {
+                                    const rect = img.getBoundingClientRect();
+                                    const scaleImg = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight);
+                                    const displayWidth = img.naturalWidth * scaleImg;
+                                    const displayHeight = img.naturalHeight * scaleImg;
+                                    const offsetX = (rect.width - displayWidth) / 2;
+                                    const offsetY = (rect.height - displayHeight) / 2;
+                                    displayX = point.x * scaleImg + offsetX;
+                                    displayY = point.y * scaleImg + offsetY;
+                                  }
                                   return (
                                     <div
                                       key={index}
                                       className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
                                       style={{
-                                        left: `${point.x}px`,
-                                        top: `${point.y}px`,
+                                        left: `${displayX}px`,
+                                        top: `${displayY}px`,
                                       }}
                                     >
                                       <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
@@ -2245,23 +2188,21 @@ export default function HomographyMappingPage() {
                                     </div>
                                   );
                                 })}
-                                {currentStep === 4 && selectedObject && objectCameraDisplayPoints.map((point, index) => {
-                                  return (
-                                    <div
-                                      key={index}
-                                      className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
-                                      style={{
-                                        left: `${point.x}px`,
-                                        top: `${point.y}px`,
-                                      }}
-                                    >
-                                      <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
-                                        {index + 1}
-                                      </div>
+                                {currentStep === 4 && selectedObject && selectedObject.src_points.map((point, index) => (
+                                  <div
+                                    key={index}
+                                    className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
+                                    style={{
+                                      left: `${point.x}px`,
+                                      top: `${point.y}px`,
+                                    }}
+                                  >
+                                    <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                                      {index + 1}
                                     </div>
-                                  );
-                                })}
-                                {hoverPoint && selectionSequence === "camera" && objectCameraDisplayPoints.length < objectPointLimit && (
+                                  </div>
+                                ))}
+                                {hoverPoint && selectionSequence === "camera" && !showPointPrompt && (
                                   <div
                                     className="absolute w-6 h-6 -ml-3 -mt-3 pointer-events-none"
                                     style={{

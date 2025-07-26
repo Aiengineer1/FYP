@@ -1,0 +1,833 @@
+"use client"
+
+import { useState, useEffect, useRef, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
+import { Map, Plus, Save, Play, Square, Trash2, Loader2, RefreshCw, AlertCircle, Edit, CheckCircle, AlertTriangle } from "lucide-react"
+
+import AuthenticatedLayout from "@/components/authenticated-layout"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+
+interface Point {
+  x: number
+  y: number
+  id?: number | string
+  timestamp?: number
+}
+
+interface Camera {
+  id: number
+  name: string
+  location: string
+  ip_address: string
+  username: string
+  password: string
+  has_mapping?: boolean
+  resolution?: { width: number; height: number }
+}
+
+interface MappingObject {
+  name: string
+  src_points: Point[]
+  dst_points: Point[]
+  selected?: boolean
+  zone_name: string
+  zone_points: Point[]
+  object_name: string
+}
+
+interface ProcessedMapping {
+  name: string
+  zone_name: string
+  object_name: string
+  src_points: number[][]
+  dst_points: number[][]
+  zone_points: Point[]
+}
+
+interface ValidationResult {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+  quality: number
+}
+
+interface Zone {
+  name: string
+  points: Point[]
+  x: number
+  y: number
+}
+
+interface ZoneData {
+  name: string
+  points: Point[]
+  objects: Array<{
+    name: string
+    src_points: Point[]
+    dst_points: Point[]
+  }>
+}
+
+export default function HomographyMappingPage() {
+  const router = useRouter()
+  const { toast } = useToast()
+  
+  // Core state
+  const [cameras, setCameras] = useState<Camera[]>([])
+  const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
+  const [currentStep, setCurrentStep] = useState<number>(1)
+  const [systemRunning, setSystemRunning] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState(true)
+  
+  // Zone management
+  const [zoneName, setZoneName] = useState<string>("")
+  const [zones, setZones] = useState<Zone[]>([])
+  const [currentZone, setCurrentZone] = useState<Zone | null>(null)
+  const [isZoneMappingComplete, setIsZoneMappingComplete] = useState(false)
+  const [zoneMappingMode, setZoneMappingMode] = useState<"camera" | "map">("camera")
+  const [cameraZonePoints, setCameraZonePoints] = useState<Point[]>([])
+  const [mapZonePoints, setMapZonePoints] = useState<Point[]>([])
+  
+  // Object management
+  const [objectName, setObjectName] = useState<string>("")
+  const [mappingObjects, setMappingObjects] = useState<MappingObject[]>([])
+  const [selectedObject, setSelectedObject] = useState<MappingObject | null>(null)
+  const [isMappingMode, setIsMappingMode] = useState(false)
+  const [selectionSequence, setSelectionSequence] = useState<"camera" | "map">("camera")
+  const [objectPointLimit, setObjectPointLimit] = useState(4)
+  
+  // Image and UI state
+  const [mallMapImage, setMallMapImage] = useState<string | null>("")
+  const [cameraFrame, setCameraFrame] = useState<string | null>(null)
+  const [isCapturing, setIsCapturing] = useState(false)
+  const [captureError, setCaptureError] = useState<string | null>(null)
+  const [mallMapNaturalWidth, setMallMapNaturalWidth] = useState<number | null>(null)
+  const [mallMapNaturalHeight, setMallMapNaturalHeight] = useState<number | null>(null)
+  const [cameraResolution, setCameraResolution] = useState<{ width: number; height: number }>({ width: 1920, height: 1080 })
+  
+  // Validation and quality
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
+  const [calibrationQuality, setCalibrationQuality] = useState(0)
+  const [hoverPoint, setHoverPoint] = useState<Point | null>(null)
+  
+  // UI control state
+  const [isSaving, setIsSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState('mapping')
+  const [showPointPrompt, setShowPointPrompt] = useState(false)
+  const [showAnotherObjectPrompt, setShowAnotherObjectPrompt] = useState(false)
+  const [showCompleteMappingButton, setShowCompleteMappingButton] = useState(false)
+  const [additionalPoints, setAdditionalPoints] = useState(0)
+  const [tempError, setTempError] = useState<string | null>(null)
+  
+  // Testing state
+  const [isTesting, setIsTesting] = useState(false)
+  const [testImageUrl, setTestImageUrl] = useState<string | null>(null)
+  const [zonesData, setZonesData] = useState<ZoneData[]>([])
+  
+  // Edit mode state
+  const [editingZone, setEditingZone] = useState<string | null>(null)
+  const [editingObject, setEditingObject] = useState<{ zone: string, object: string } | null>(null)
+  const [zoneRename, setZoneRename] = useState<string>('')
+  const [objectRename, setObjectRename] = useState<string>('')
+
+  // Refs for image elements
+  const cameraImageRef = useRef<HTMLImageElement>(null)
+  const mapImageRef = useRef<HTMLImageElement>(null)
+
+  // ========================================
+  // ENHANCED COORDINATE TRANSFORMATION SYSTEM
+  // ========================================
+
+  /**
+   * Universal coordinate transformer for both camera and map views
+   * Handles object-fit: contain properly for consistent behavior
+   */
+  const getImageCoordinates = useCallback((event: React.MouseEvent, imageElement: HTMLImageElement, naturalWidth: number, naturalHeight: number) => {
+    if (!imageElement || !naturalWidth || !naturalHeight) {
+      console.error('Missing required parameters for coordinate transformation')
+      return null
+    }
+
+    const rect = imageElement.getBoundingClientRect()
+    
+    // Calculate the actual scale used by object-fit: contain
+    const scaleX = rect.width / naturalWidth
+    const scaleY = rect.height / naturalHeight
+    const actualScale = Math.min(scaleX, scaleY) // object-fit: contain uses minimum
+    
+    // Calculate the actual displayed image dimensions
+    const displayedWidth = naturalWidth * actualScale
+    const displayedHeight = naturalHeight * actualScale
+    
+    // Calculate centering offsets (letterboxing/pillarboxing)
+    const offsetX = (rect.width - displayedWidth) / 2
+    const offsetY = (rect.height - displayedHeight) / 2
+    
+    // Get click position relative to the container
+    const clickX = event.clientX - rect.left
+    const clickY = event.clientY - rect.top
+    
+    // Check if click is within the actual image area
+    if (clickX < offsetX || clickX > offsetX + displayedWidth ||
+        clickY < offsetY || clickY > offsetY + displayedHeight) {
+      console.warn('Click outside image bounds')
+      return null
+    }
+    
+    // Convert to image coordinates
+    const imageX = (clickX - offsetX) / actualScale
+    const imageY = (clickY - offsetY) / actualScale
+    
+    // Clamp to image boundaries (safety check)
+    const clampedX = Math.max(0, Math.min(naturalWidth, Math.round(imageX)))
+    const clampedY = Math.max(0, Math.min(naturalHeight, Math.round(imageY)))
+    
+    return {
+      x: clampedX,
+      y: clampedY,
+      scale: actualScale,
+      offset: { x: offsetX, y: offsetY },
+      withinBounds: true
+    }
+  }, [])
+
+  /**
+   * Convert image coordinates back to display coordinates for rendering overlays
+   */
+  const getDisplayCoordinates = useCallback((imagePoint: Point, imageElement: HTMLImageElement | null, naturalWidth: number, naturalHeight: number) => {
+    if (!imageElement || !naturalWidth || !naturalHeight) return imagePoint
+    
+    const rect = imageElement.getBoundingClientRect()
+    const actualScale = Math.min(rect.width / naturalWidth, rect.height / naturalHeight)
+    const displayedWidth = naturalWidth * actualScale
+    const displayedHeight = naturalHeight * actualScale
+    const offsetX = (rect.width - displayedWidth) / 2
+    const offsetY = (rect.height - displayedHeight) / 2
+    
+    return {
+      x: imagePoint.x * actualScale + offsetX,
+      y: imagePoint.y * actualScale + offsetY
+    }
+  }, [])
+
+  // ========================================
+  // HOMOGRAPHY VALIDATION SYSTEM
+  // ========================================
+
+  /**
+   * Comprehensive homography validation with quality scoring
+   */
+  const validateHomographyMapping = useCallback((srcPoints: Point[], dstPoints: Point[]): ValidationResult => {
+    const validation: ValidationResult = {
+      isValid: false,
+      errors: [],
+      warnings: [],
+      quality: 0
+    }
+
+    // Check minimum points
+    if (srcPoints.length < 4 || dstPoints.length < 4) {
+      validation.errors.push('Minimum 4 points required for homography')
+      return validation
+    }
+
+    // Check point correspondence
+    if (srcPoints.length !== dstPoints.length) {
+      validation.errors.push('Source and destination points count mismatch')
+      return validation
+    }
+
+    // Check for collinear points
+    const arePointsCollinear = (points: Point[], tolerance = 10): boolean => {
+      if (points.length < 3) return false
+      for (let i = 2; i < points.length; i++) {
+        const area = Math.abs(
+          (points[1].x - points[0].x) * (points[i].y - points[0].y) -
+          (points[i].x - points[0].x) * (points[1].y - points[0].y)
+        )
+        if (area > tolerance) return false
+      }
+      return true
+    }
+
+    if (arePointsCollinear(srcPoints)) {
+      validation.errors.push('Source points are collinear - invalid for homography')
+      return validation
+    }
+
+    if (arePointsCollinear(dstPoints)) {
+      validation.errors.push('Destination points are collinear - invalid for homography')
+      return validation
+    }
+
+    // Check for duplicate points
+    const hasDuplicatePoints = (points: Point[], tolerance = 5): boolean => {
+      for (let i = 0; i < points.length; i++) {
+        for (let j = i + 1; j < points.length; j++) {
+          const distance = Math.sqrt(
+            Math.pow(points[i].x - points[j].x, 2) +
+            Math.pow(points[i].y - points[j].y, 2)
+          )
+          if (distance < tolerance) return true
+        }
+      }
+      return false
+    }
+
+    if (hasDuplicatePoints(srcPoints) || hasDuplicatePoints(dstPoints)) {
+      validation.warnings.push('Duplicate points detected - may affect accuracy')
+    }
+
+    // Calculate quality score based on point distribution
+    const calculatePolygonArea = (points: Point[]): number => {
+      if (points.length < 3) return 0
+      let area = 0
+      for (let i = 0; i < points.length; i++) {
+        const j = (i + 1) % points.length
+        area += points[i].x * points[j].y
+        area -= points[j].x * points[i].y
+      }
+      return Math.abs(area) / 2
+    }
+
+    const srcArea = calculatePolygonArea(srcPoints)
+    const dstArea = calculatePolygonArea(dstPoints)
+    
+    let score = 50 // Base score
+    
+    // Bonus for more points
+    if (srcPoints.length > 4) {
+      score += Math.min(20, (srcPoints.length - 4) * 5)
+    }
+    
+    // Bonus for good coverage
+    if (srcArea > 10000 && dstArea > 10000) {
+      score += 20
+    }
+    
+    // Calculate aspect ratio similarity
+    const getBoundingBox = (points: Point[]) => {
+      const xs = points.map(p => p.x)
+      const ys = points.map(p => p.y)
+      return {
+        width: Math.max(...xs) - Math.min(...xs),
+        height: Math.max(...ys) - Math.min(...ys)
+      }
+    }
+
+    const srcBounds = getBoundingBox(srcPoints)
+    const dstBounds = getBoundingBox(dstPoints)
+    
+    const srcAspect = srcBounds.width / srcBounds.height
+    const dstAspect = dstBounds.width / dstBounds.height
+    const aspectRatio = Math.min(srcAspect, dstAspect) / Math.max(srcAspect, dstAspect)
+    
+    score += aspectRatio * 10 // Aspect ratio similarity bonus
+
+    // Small area penalty
+    if (srcArea < 1000 || dstArea < 1000) {
+      validation.warnings.push('Small mapping area may affect accuracy')
+      score -= 10
+    }
+
+    validation.isValid = true
+    validation.quality = Math.min(100, Math.max(0, Math.round(score)))
+
+    if (validation.quality < 60) {
+      validation.warnings.push('Low mapping quality - consider adding more points or improving distribution')
+    }
+
+    return validation
+  }, [])
+
+  // ========================================
+  // DYNAMIC CAMERA RESOLUTION DETECTION
+  // ========================================
+
+  /**
+   * Detect actual camera resolution from stream or fallback to detection
+   */
+  const detectCameraResolution = useCallback(async (camera: Camera) => {
+    try {
+      // Try to get resolution from camera metadata first
+      if (camera.resolution) {
+        setCameraResolution(camera.resolution)
+        return camera.resolution
+      }
+
+      // Fallback to image element detection
+      const img = cameraImageRef.current
+      if (img && img.complete && img.naturalWidth > 0) {
+        const resolution = {
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        }
+        setCameraResolution(resolution)
+        return resolution
+      }
+
+      // Ultimate fallback to common resolution
+      console.warn('Using fallback camera resolution')
+      const fallback = { width: 1920, height: 1080 }
+      setCameraResolution(fallback)
+      return fallback
+    } catch (error) {
+      console.error('Could not detect camera resolution:', error)
+      const fallback = { width: 1920, height: 1080 }
+      setCameraResolution(fallback)
+      return fallback
+    }
+  }, [])
+
+  // ========================================
+  // UNIFIED CLICK HANDLERS
+  // ========================================
+
+  /**
+   * Universal click handler for both camera and map views with consistent coordinate handling
+   */
+  const handleImageClick = useCallback((event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
+    if (!isSelecting && !isMappingMode && currentStep !== 2) return
+    if (isMappingMode && type !== selectionSequence && currentStep !== 2) return
+    
+    const img = event.currentTarget
+    let naturalWidth: number, naturalHeight: number
+
+    if (type === "camera") {
+      naturalWidth = cameraResolution.width
+      naturalHeight = cameraResolution.height
+    } else {
+      naturalWidth = mallMapNaturalWidth || img.naturalWidth
+      naturalHeight = mallMapNaturalHeight || img.naturalHeight
+    }
+
+    const coordinates = getImageCoordinates(event, img, naturalWidth, naturalHeight)
+    
+    if (!coordinates) {
+      console.warn(`Click outside ${type} image bounds`)
+      return
+    }
+
+    const point: Point = {
+      x: coordinates.x,
+      y: coordinates.y,
+      id: Date.now(),
+      timestamp: Date.now()
+    }
+
+    // Handle zone mapping (step 2)
+    if (currentStep === 2 && currentZone) {
+      if (type === zoneMappingMode) {
+        if (type === "camera") {
+          const newPoints = [...cameraZonePoints, point]
+          setCameraZonePoints(newPoints)
+          if (newPoints.length === 5) {
+            setShowPointPrompt(true)
+          }
+          if (additionalPoints > 0 && newPoints.length === 5 + additionalPoints) {
+            setZoneMappingMode("map")
+            setShowPointPrompt(false)
+          }
+        } else {
+          const newPoints = [...mapZonePoints, point]
+          setMapZonePoints(newPoints)
+        }
+      }
+      return
+    }
+
+    // Handle object mapping (step 4)
+    if (currentStep === 4 && isMappingMode && selectedObject) {
+      const currentZone = zones.find(zone => selectedObject.name.startsWith(zone.name))
+      if (!currentZone) return
+
+      if (type === "camera" && selectedObject.src_points.length < objectPointLimit) {
+        const newSrcPoints = [...selectedObject.src_points, { ...point, id: selectedObject.src_points.length + 1 }]
+        setSelectedObject(prev => ({ ...prev!, src_points: newSrcPoints }))
+        
+        if (newSrcPoints.length === 4) {
+          setShowPointPrompt(true)
+        } else if (newSrcPoints.length === objectPointLimit) {
+          setSelectionSequence("map")
+          toast({ title: "Camera points complete", description: "Now select corresponding points on the map view" })
+        }
+      } else if (type === "map" && selectedObject.dst_points.length < objectPointLimit) {
+        if (!isPointInsideZone(point, currentZone)) {
+          showTemporaryError("Point is outside the zone. Please select within the zone boundaries.")
+          return
+        }
+        
+        const newDstPoints = [...selectedObject.dst_points, { ...point, id: selectedObject.dst_points.length + 1 }]
+        const updatedObject = { ...selectedObject, dst_points: newDstPoints }
+        setSelectedObject(updatedObject)
+        setMappingObjects(prev => prev.map(obj => obj.name === selectedObject.name ? updatedObject : obj))
+        
+        if (newDstPoints.length === objectPointLimit) {
+          setShowAnotherObjectPrompt(true)
+        }
+      }
+    }
+  }, [currentStep, isMappingMode, selectionSequence, selectedObject, currentZone, zones, zoneMappingMode, cameraZonePoints, mapZonePoints, objectPointLimit, additionalPoints, cameraResolution, mallMapNaturalWidth, mallMapNaturalHeight, getImageCoordinates, toast])
+
+  // Add mouse move handler for hover effect
+  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLImageElement>, type: "camera" | "map") => {
+    if (!isMappingMode || type !== selectionSequence) return
+    
+    const img = event.currentTarget
+    let naturalWidth: number, naturalHeight: number
+
+    if (type === "camera") {
+      naturalWidth = cameraResolution.width
+      naturalHeight = cameraResolution.height
+    } else {
+      naturalWidth = mallMapNaturalWidth || img.naturalWidth
+      naturalHeight = mallMapNaturalHeight || img.naturalHeight
+    }
+
+    const coordinates = getImageCoordinates(event, img, naturalWidth, naturalHeight)
+    if (coordinates) {
+      setHoverPoint({ x: coordinates.x, y: coordinates.y })
+    }
+  }, [isMappingMode, selectionSequence, cameraResolution, mallMapNaturalWidth, mallMapNaturalHeight, getImageCoordinates])
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverPoint(null)
+  }, [])
+
+  // ========================================
+  // UTILITY FUNCTIONS
+  // ========================================
+
+  const isPointInsideZone = useCallback((point: Point, zone: { points: Point[] }): boolean => {
+    if (zone.points.length < 3) return false
+
+    let inside = false
+    for (let i = 0, j = zone.points.length - 1; i < zone.points.length; j = i++) {
+      const xi = zone.points[i].x
+      const yi = zone.points[i].y
+      const xj = zone.points[j].x
+      const yj = zone.points[j].y
+
+      const intersect = ((yi > point.y) !== (yj > point.y)) &&
+        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)
+      if (intersect) inside = !inside
+    }
+    return inside
+  }, [])
+
+  const showTemporaryError = useCallback((message: string) => {
+    setTempError(message)
+    setTimeout(() => setTempError(null), 3000)
+  }, [])
+
+  // ========================================
+  // INITIALIZATION AND DATA FETCHING
+  // ========================================
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const userData = localStorage.getItem("user")
+        const token = localStorage.getItem("token")
+
+        if (!userData || !token) {
+          throw new Error("User data or token not found")
+        }
+
+        const user = JSON.parse(userData)
+
+        if (!user.mall_id) {
+          console.warn("No mall configured for user")
+          setCameras([])
+          setMallMapImage(null)
+          setIsLoading(false)
+          return
+        }
+
+        // Fetch mall map image
+        try {
+          const mallResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/image`, {
+            headers: { "Authorization": `Bearer ${token}` }
+          })
+
+          if (mallResponse.ok) {
+            const mallImageBlob = await mallResponse.blob()
+            const mallImageUrl = URL.createObjectURL(mallImageBlob)
+            setMallMapImage(mallImageUrl)
+          } else {
+            console.warn("Mall map image not available")
+            setMallMapImage(null)
+          }
+        } catch (error) {
+          console.warn("Could not fetch mall map:", error)
+          setMallMapImage(null)
+        }
+
+        // Fetch cameras for the mall
+        try {
+          const camerasResponse = await fetch(`http://localhost:8000/mall/${user.mall_id}/cameras`, {
+            headers: { "Authorization": `Bearer ${token}` }
+          })
+
+          if (camerasResponse.ok) {
+            const camerasData = await camerasResponse.json()
+            setCameras(Array.isArray(camerasData) ? camerasData : [])
+          } else {
+            console.warn("Cameras not available")
+            setCameras([])
+          }
+        } catch (error) {
+          console.warn("Could not fetch cameras:", error)
+          setCameras([])
+        }
+
+      } catch (error) {
+        console.error("Error fetching data:", error)
+        toast({
+          title: "Warning",
+          description: "Some data could not be loaded. Please ensure your mall is properly configured.",
+          variant: "default",
+        })
+        setCameras([])
+        setMallMapImage(null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [toast])
+
+  // Fetch zones data when camera is selected
+  useEffect(() => {
+    const fetchZonesData = async () => {
+      if (!selectedCamera) return
+
+      try {
+        const token = localStorage.getItem("token")
+        if (!token) throw new Error("No authentication token found")
+
+        const response = await fetch(`http://localhost:8000/${selectedCamera.id}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` }
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => null)
+          throw new Error(errorData?.detail || "Failed to fetch camera data")
+        }
+
+        const data = await response.json()
+        const zones = data.homography_map?.zones || []
+        setZonesData(zones)
+      } catch (error) {
+        console.error("Error fetching camera data:", error)
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to fetch camera data",
+          variant: "destructive"
+        })
+      }
+    }
+
+    fetchZonesData()
+  }, [selectedCamera, toast])
+
+  // Real-time validation update
+  useEffect(() => {
+    if (selectedObject && selectedObject.src_points.length >= 4 && selectedObject.dst_points.length >= 4 && 
+        selectedObject.src_points.length === selectedObject.dst_points.length) {
+      const validation = validateHomographyMapping(selectedObject.src_points, selectedObject.dst_points)
+      setValidationResult(validation)
+      setCalibrationQuality(validation.quality)
+    } else {
+      setValidationResult(null)
+      setCalibrationQuality(0)
+    }
+  }, [selectedObject, validateHomographyMapping])
+
+  // Authentication check
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    if (!token) {
+      toast({
+        title: "Authentication Required",
+        description: "Please login to continue",
+        variant: "destructive",
+      })
+      router.push("/login")
+    }
+  }, [router, toast])
+
+  // Clean up object URLs
+  useEffect(() => {
+    return () => {
+      if (cameraFrame) {
+        URL.revokeObjectURL(cameraFrame)
+      }
+    }
+  }, [cameraFrame])
+
+  // ========================================
+  // CAMERA OPERATIONS
+  // ========================================
+
+  const getCameraFrame = async (camera: Camera) => {
+    try {
+      setIsCapturing(true)
+      setCaptureError(null)
+
+      const token = localStorage.getItem("token")
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please login to continue",
+          variant: "destructive",
+        })
+        router.push("/login")
+        return
+      }
+
+      const rtspUrl = `rtsp://${camera.username}:${camera.password}@${camera.ip_address}:554/cam/realmonitor?channel=1&subtype=0`
+
+      const response = await fetch("http://localhost:8000/camera/frame", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token.trim()}`
+        },
+        body: JSON.stringify({ rtsp_url: rtspUrl })
+      })
+
+      if (response.status === 401) {
+        toast({
+          title: "Session Expired",
+          description: "Your session has expired. Please login again.",
+          variant: "destructive",
+        })
+        localStorage.removeItem("token")
+        localStorage.removeItem("user")
+        router.push("/login")
+        return
+      }
+
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type")
+        let errorMessage = "Failed to get camera frame"
+
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const errorData = await response.json()
+            if (errorData.detail && errorData.detail.includes("Unauthorized")) {
+              errorMessage = "Camera authentication failed. Please check camera credentials."
+            } else {
+              errorMessage = errorData.detail || errorData.message || JSON.stringify(errorData)
+            }
+          } catch (e) {
+            console.error("Error parsing JSON response:", e)
+          }
+        }
+
+        setCaptureError(errorMessage)
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      setCameraFrame(objectUrl)
+
+      // Detect camera resolution after frame is loaded
+      setTimeout(() => detectCameraResolution(camera), 100)
+    } catch (error) {
+      console.error("Error capturing frame:", error)
+      setCaptureError(error instanceof Error ? error.message : "Failed to capture frame")
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to capture frame",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCapturing(false)
+    }
+  }
+
+  // ========================================
+  // WORKFLOW HANDLERS
+  // ========================================
+
+  const handleCameraSelect = async (value: string) => {
+    const camera = cameras.find(c => c.id.toString() === value)
+    setSelectedCamera(camera || null)
+    setCurrentStep(1)
+    setZones([])
+    setMappingObjects([])
+    setCameraFrame(null)
+    
+    if (camera) {
+      await detectCameraResolution(camera)
+    }
+  }
+
+  const handleZoneSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!zoneName) return
+
+    const newZone: Zone = {
+      name: zoneName,
+      points: [],
+      x: 0,
+      y: 0
+    }
+
+    setZones([...zones, newZone])
+    setCurrentZone(newZone)
+    setZoneName("")
+    setCurrentStep(2)
+  }
+
+  const handleCompleteZoneMapping = () => {
+    if (currentZone && cameraZonePoints.length >= 3 && mapZonePoints.length >= 3) {
+      const updatedZone = {
+        ...currentZone,
+        points: mapZonePoints
+      }
+
+      setZones(prev => prev.map(z => z.name === currentZone.name ? updatedZone : z))
+      setIsZoneMappingComplete(true)
+      setCurrentStep(3)
+      setCameraZonePoints([])
+      setMapZonePoints([])
+      setZoneMappingMode("camera")
+
+      toast({
+        title: "Success",
+        description: "Zone mapping completed",
+      })
+    } else {
+      toast({
+        title: "Error",
+        description: "Please select at least 3 points on both views",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleObjectCreate = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!objectName || !currentZone || !isZoneMappingComplete) return
+
+    const newObject: MappingObject = {
+      name: `${currentZone.name}_${objectName}`,
+      src_points: [],
