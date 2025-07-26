@@ -180,34 +180,79 @@ class APIClient {
     }
 
     // Analytics endpoints - matching your backend implementation
-    async getMallAnalytics(mallId: number, timeRange?: string): Promise<MallAnalytics> {
-        const params = timeRange ? `?range=${timeRange}` : ''
-        return this.request<MallAnalytics>(`/analytics/mall/${mallId}${params}`)
-    }
-
-    async getCameraAnalytics(cameraId: number): Promise<CameraAnalytics> {
-        return this.request<CameraAnalytics>(`/analytics/camera/${cameraId}`)
+    async getMallAnalytics(mallId: number, timeRange?: string, filters?: any): Promise<MallAnalytics> {
+        const params = new URLSearchParams()
+        if (timeRange) params.append('range', timeRange)
+        if (filters?.gender) params.append('gender', filters.gender)
+        if (filters?.ageGroup) params.append('ageGroup', filters.ageGroup)
+        if (filters?.zone) params.append('zone', filters.zone)
+        if (filters?.cameraId) params.append('cameraId', filters.cameraId.toString())
+        
+        const queryString = params.toString() ? `?${params.toString()}` : ''
+        return this.request<MallAnalytics>(`/analytics/mall/${mallId}${queryString}`)
     }
 
     async getRealTimeMetrics(mallId: number): Promise<RealTimeMetrics> {
-        try {
-            return this.request<RealTimeMetrics>(`/analytics/mall/${mallId}/realtime`)
-        } catch (error) {
-            // If the endpoint doesn't exist yet, return mock data gracefully
-            if (error instanceof APIError && error.status === 404) {
-                console.warn('Real-time metrics endpoint not implemented yet, using mock data')
-                return {
-                    activeVisitors: Math.floor(Math.random() * 50) + 20, // Random 20-70
-                    currentPeakHour: new Date().getHours() >= 10 && new Date().getHours() <= 20,
-                    timestamp: new Date().toISOString()
-                }
-            }
-            throw error
-        }
+        return this.request<RealTimeMetrics>(`/analytics/mall/${mallId}/realtime`)
     }
 
-    async getHeatmapData(mallId: number): Promise<any> {
-        return this.request(`/analytics/mall/${mallId}/heatmap`)
+    async getHeatmapData(mallId: number, filters?: any): Promise<any> {
+        const params = new URLSearchParams()
+        if (filters?.range) params.append('range', filters.range)
+        if (filters?.gender) params.append('gender', filters.gender)
+        if (filters?.ageGroup) params.append('ageGroup', filters.ageGroup)
+        if (filters?.timeOfDay) params.append('timeOfDay', filters.timeOfDay)
+        if (filters?.zone) params.append('zone', filters.zone)
+        
+        const queryString = params.toString() ? `?${params.toString()}` : ''
+        return this.request(`/analytics/mall/${mallId}/heatmap${queryString}`)
+    }
+
+    async getSectionAnalytics(mallId: number, filters?: any): Promise<any[]> {
+        const params = new URLSearchParams()
+        if (filters?.range) params.append('range', filters.range)
+        if (filters?.gender) params.append('gender', filters.gender)
+        if (filters?.ageGroup) params.append('ageGroup', filters.ageGroup)
+        if (filters?.section) params.append('section', filters.section)
+        if (filters?.rack) params.append('rack', filters.rack)
+        
+        const queryString = params.toString() ? `?${params.toString()}` : ''
+        return this.request(`/analytics/mall/${mallId}/sections${queryString}`)
+    }
+
+    async getCustomerInsights(mallId: number, filters?: any): Promise<any> {
+        const params = new URLSearchParams()
+        if (filters?.range) params.append('range', filters.range)
+        if (filters?.gender) params.append('gender', filters.gender)
+        if (filters?.ageGroup) params.append('ageGroup', filters.ageGroup)
+        
+        const queryString = params.toString() ? `?${params.toString()}` : ''
+        return this.request(`/analytics/mall/${mallId}/customers${queryString}`)
+    }
+
+    async getCameraAnalytics(mallId: number): Promise<CameraAnalytics[]> {
+        return this.request<CameraAnalytics[]>(`/analytics/cameras/mall/${mallId}`)
+    }
+
+    async getAlerts(mallId: number, filters?: any): Promise<any[]> {
+        const params = new URLSearchParams()
+        if (filters?.since) params.append('since', filters.since)
+        if (filters?.zone) params.append('zone', filters.zone)
+        if (filters?.severity) params.append('severity', filters.severity)
+        
+        const queryString = params.toString() ? `?${params.toString()}` : ''
+        return this.request(`/analytics/mall/${mallId}/alerts${queryString}`)
+    }
+
+    async getTimeSeriesData(mallId: number, filters?: any): Promise<any[]> {
+        const params = new URLSearchParams()
+        if (filters?.metric) params.append('metric', filters.metric)
+        if (filters?.range) params.append('range', filters.range)
+        if (filters?.zone) params.append('zone', filters.zone)
+        if (filters?.cameraId) params.append('cameraId', filters.cameraId.toString())
+        
+        const queryString = params.toString() ? `?${params.toString()}` : ''
+        return this.request(`/analytics/mall/${mallId}/timeseries${queryString}`)
     }
 
     async getSystemStatus(): Promise<{ processing_time: number; fps: number; queue_size: number }> {
@@ -223,6 +268,12 @@ class APIClient {
 
     async stopCameraProcessing(cameraId: number): Promise<any> {
         return this.request(`/analytics/camera/${cameraId}/stop`, {
+            method: 'POST',
+        })
+    }
+
+    async startAllCameras(mallId: number): Promise<any> {
+        return this.request(`/analytics/mall/${mallId}/start_all_cameras`, {
             method: 'POST',
         })
     }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { BarChart, LineChart, Activity, Users, Camera, Filter, Wifi, WifiOff } from "lucide-react"
+import { BarChart, LineChart, Activity, Users, Camera, Filter, Wifi, WifiOff, Map, TrendingUp, AlertTriangle, Clock } from "lucide-react"
 import { motion } from "framer-motion"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
@@ -16,7 +16,7 @@ import { AnimatedBarChart, AnimatedStackedBarChart } from "@/components/charts/a
 
 // Custom hooks
 import { useAuthStore } from "@/stores/auth-store"
-import { useAnalytics, useCameras, useRealTimeMetrics } from "@/hooks/use-analytics"
+import { useAnalytics, useCameras, useRealTimeMetrics, useHeatmapData, useSectionAnalytics, useCustomerInsights, useAlerts, useTimeSeriesData, useCameraAnalytics } from "@/hooks/use-analytics"
 import { useSocket } from "@/lib/socket-client"
 
 // Mock data for charts (fallback)
@@ -42,22 +42,64 @@ function AnalyticsContent() {
   const { user } = useAuthStore()
   const { socket, isConnected } = useSocket()
 
-  // Fetch data using SWR hooks
-  const { analytics, isLoading: analyticsLoading, isError: analyticsError, refresh: refreshAnalytics } = useAnalytics(user?.mall_id || null)
-  const { cameras, isLoading: camerasLoading, isError: camerasError } = useCameras(user?.mall_id || null)
-  const { realTimeMetrics, isLoading: metricsLoading } = useRealTimeMetrics(user?.mall_id || null)
-
-  // Local state
+  // Local state - declare first
   const [shelfInsightTab, setShelfInsightTab] = useState<string>("overall")
   const [customerInsightTab, setCustomerInsightTab] = useState<string>("route")
   const [cameraTab, setCameraTab] = useState<string>("all")
   const [selectedTimeRange, setSelectedTimeRange] = useState<string>("today")
 
-  // Filters
+  // Filters - declare first
   const [rackFilter, setRackFilter] = useState<string>("all")
   const [genderFilter, setGenderFilter] = useState<string>("all")
   const [ageGroupFilter, setAgeGroupFilter] = useState<string>("all")
   const [cameraFilter, setCameraFilter] = useState<string>("all")
+
+  // Fetch data using SWR hooks with real backend APIs
+  const { analytics, isLoading: analyticsLoading, isError: analyticsError, refresh: refreshAnalytics } = useAnalytics(user?.mall_id || null, selectedTimeRange, {
+    gender: genderFilter !== 'all' ? genderFilter : undefined,
+    ageGroup: ageGroupFilter !== 'all' ? ageGroupFilter : undefined,
+    zone: rackFilter !== 'all' ? rackFilter : undefined,
+    cameraId: cameraFilter !== 'all' ? parseInt(cameraFilter) : undefined,
+  })
+
+  const { cameras, isLoading: camerasLoading, isError: camerasError } = useCameras(user?.mall_id || null)
+  const { realTimeMetrics, isLoading: metricsLoading } = useRealTimeMetrics(user?.mall_id || null)
+
+  // New hooks for enhanced analytics
+  const { heatmapData, refresh: refreshHeatmap } = useHeatmapData(user?.mall_id || null, {
+    range: selectedTimeRange,
+    gender: genderFilter !== 'all' ? genderFilter : undefined,
+    ageGroup: ageGroupFilter !== 'all' ? ageGroupFilter : undefined,
+    zone: rackFilter !== 'all' ? rackFilter : undefined,
+  })
+
+  const { sectionData, refresh: refreshSections } = useSectionAnalytics(user?.mall_id || null, {
+    range: selectedTimeRange,
+    gender: genderFilter !== 'all' ? genderFilter : undefined,
+    ageGroup: ageGroupFilter !== 'all' ? ageGroupFilter : undefined,
+    section: rackFilter !== 'all' ? rackFilter : undefined,
+  })
+
+  const { customerData, refresh: refreshCustomers } = useCustomerInsights(user?.mall_id || null, {
+    range: selectedTimeRange,
+    gender: genderFilter !== 'all' ? genderFilter : undefined,
+    ageGroup: ageGroupFilter !== 'all' ? ageGroupFilter : undefined,
+  })
+
+  const { alerts, refresh: refreshAlerts } = useAlerts(user?.mall_id || null, {
+    since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Last 24 hours
+  })
+
+  const { timeSeriesData, refresh: refreshTimeSeries } = useTimeSeriesData(user?.mall_id || null, {
+    metric: 'visitors',
+    range: selectedTimeRange,
+    zone: rackFilter !== 'all' ? rackFilter : undefined,
+  })
+
+  const { cameraAnalytics, refresh: refreshCameraAnalytics } = useCameraAnalytics(user?.mall_id || null)
+
+  // Ensure cameras is always an array with proper typing
+  const camerasArray: any[] = Array.isArray(cameras) ? cameras : []
 
   // Real-time socket updates
   useEffect(() => {
@@ -65,20 +107,13 @@ function AnalyticsContent() {
       socket.joinMallRoom(user.mall_id)
 
       // Subscribe to real-time updates
-      socket.onAnalyticsUpdate((data) => {
+      socket.onAnalyticsUpdate((data: any) => {
         console.log('Analytics update received:', data)
-        refreshAnalytics()
-      })
-
-      socket.onVisitorUpdate((data) => {
-        console.log('Visitor update received:', data)
         refreshAnalytics()
       })
 
       return () => {
         socket.leaveMallRoom(user.mall_id!)
-        socket.off('analytics_update')
-        socket.off('visitor_update')
       }
     }
   }, [socket, user?.mall_id, refreshAnalytics])
@@ -109,7 +144,7 @@ function AnalyticsContent() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={refreshAnalytics} className="w-full">
+            <Button onClick={() => refreshAnalytics()} className="w-full">
               Retry
             </Button>
           </CardContent>
@@ -118,7 +153,7 @@ function AnalyticsContent() {
     )
   }
 
-  const camerasWithStatus = cameras.map((camera: any) => ({
+  const camerasWithStatus = camerasArray.map((camera: any) => ({
     ...camera,
     status: "Active" // Set all cameras as active by default
   }))
@@ -193,10 +228,10 @@ function AnalyticsContent() {
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 100, delay: 0.3 }}
             >
-              {analytics.popularSections[0]?.name || "N/A"}
+              {sectionData?.[0]?.name || "N/A"}
             </motion.div>
             <p className="text-xs text-muted-foreground">
-              {analytics.popularSections[0]?.visitorCount || 0} visitors
+              {sectionData?.[0]?.visitorCount || 0} visitors
             </p>
           </CardContent>
         </Card>
@@ -233,7 +268,7 @@ function AnalyticsContent() {
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 100, delay: 0.5 }}
             >
-              {cameras.length}
+              {camerasArray.length}
             </motion.div>
             <p className="text-xs text-muted-foreground">
               All systems operational
@@ -246,6 +281,8 @@ function AnalyticsContent() {
       <Tabs defaultValue="insights" className="space-y-4">
         <TabsList>
           <TabsTrigger value="insights">Shelf Insights</TabsTrigger>
+          <TabsTrigger value="heatmap">Heatmap</TabsTrigger>
+          <TabsTrigger value="realtime">Real-time Monitoring</TabsTrigger>
           <TabsTrigger value="customer">Customer Insights</TabsTrigger>
           <TabsTrigger value="cameras">Camera Monitoring</TabsTrigger>
         </TabsList>
@@ -263,9 +300,9 @@ function AnalyticsContent() {
               </CardHeader>
               <CardContent>
                 <AnimatedBarChart
-                  data={analytics.popularSections.map(section => ({
+                  data={(sectionData || []).map(section => ({
                     name: section.name,
-                    value: section.visitorCount
+                    value: section.visitorCount || (section.male + section.female)
                   }))}
                   height={300}
                 />
@@ -285,11 +322,215 @@ function AnalyticsContent() {
               </CardHeader>
               <CardContent>
                 <AnimatedStackedBarChart
-                  data={stayTimeData}
+                  data={sectionData || stayTimeData}
                   stackKeys={['male', 'female']}
                   height={300}
                   colors={['hsl(var(--chart-1))', 'hsl(var(--chart-2))']}
                 />
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
+
+        {/* Heatmap Tab */}
+        <TabsContent value="heatmap" className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Map className="h-5 w-5" />
+                  Zone Activity Heatmap
+                </CardTitle>
+                <CardDescription>Real-time visitor density across mall zones</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="relative w-full h-96 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg border-2 border-dashed border-gray-300">
+                  {/* Mall Layout Background */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-gray-400 text-sm">Mall Layout Map</div>
+                  </div>
+
+                  {/* Heatmap Points */}
+                  {heatmapData.zones?.map((zone: any, index: number) => (
+                    <motion.div
+                      key={zone.name}
+                      className="absolute w-8 h-8 rounded-full cursor-pointer"
+                      style={{
+                        left: `${zone.coordinates?.[0]?.[0] || 50}%`,
+                        top: `${zone.coordinates?.[0]?.[1] || 50}%`,
+                        backgroundColor: `rgba(255, 0, 0, ${zone.density * 0.8})`,
+                        border: '2px solid rgba(255, 0, 0, 0.3)',
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: index * 0.1 }}
+                      title={`${zone.name}: ${zone.visitorCount} visitors`}
+                    >
+                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                        {zone.name}: {zone.visitorCount}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Heatmap Legend */}
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-muted-foreground">Low Activity</span>
+                    <div className="flex gap-1">
+                      {[0.2, 0.4, 0.6, 0.8, 1.0].map((intensity) => (
+                        <div
+                          key={intensity}
+                          className="w-4 h-4 rounded-full"
+                          style={{
+                            backgroundColor: `rgba(255, 0, 0, ${intensity * 0.8})`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-sm text-muted-foreground">High Activity</span>
+                  </div>
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <Activity className="w-3 h-3" />
+                    Live Data
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Zone Details */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle>Zone Activity Details</CardTitle>
+                <CardDescription>Current visitor count and activity level by zone</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {heatmapData.zones?.map((zone: any, index: number) => (
+                    <motion.div
+                      key={zone.zone}
+                      className="p-4 rounded-lg border bg-card"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-medium">{zone.name}</h4>
+                        <Badge
+                          variant={zone.density > 0.8 ? "destructive" : zone.density > 0.6 ? "default" : "secondary"}
+                        >
+                          {Math.round(zone.density * 100)}% Active
+                        </Badge>
+                      </div>
+                      <div className="text-2xl font-bold">{zone.visitorCount}</div>
+                      <div className="text-sm text-muted-foreground">Current Visitors</div>
+                    </motion.div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
+
+        {/* Real-time Monitoring Tab */}
+        <TabsContent value="realtime" className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Real-time Activity Timeline
+                </CardTitle>
+                <CardDescription>Live visitor count and interaction trends</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Time Series Chart Placeholder */}
+                  <div className="h-64 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+                    <div className="text-center">
+                      <LineChart className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                      <div className="text-gray-500">Time Series Chart</div>
+                      <div className="text-sm text-gray-400">Visitor count over time</div>
+                    </div>
+                  </div>
+
+                  {/* Current Stats */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <div className="text-2xl font-bold text-blue-600">{timeSeriesData[timeSeriesData.length - 1]?.visitors || 0}</div>
+                      <div className="text-sm text-blue-600">Current Visitors</div>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">{timeSeriesData[timeSeriesData.length - 1]?.interactions || 0}</div>
+                      <div className="text-sm text-green-600">Interactions</div>
+                    </div>
+                    <div className="text-center p-3 bg-orange-50 rounded-lg">
+                      <div className="text-2xl font-bold text-orange-600">12:30</div>
+                      <div className="text-sm text-orange-600">Peak Time</div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Real-time Alerts */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Live Alerts & Notifications
+                </CardTitle>
+                <CardDescription>Real-time system alerts and important updates</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {alerts.map((alert, index) => (
+                    <motion.div
+                      key={alert.id}
+                      className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${alert.severity === 'warning' ? 'bg-orange-500' :
+                          alert.severity === 'error' ? 'bg-red-500' : 'bg-blue-500'
+                          }`} />
+                        <div>
+                          <div className="font-medium">{alert.message}</div>
+                          <div className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {alert.time}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge variant={alert.severity === 'warning' ? 'destructive' : 'secondary'}>
+                        {alert.severity}
+                      </Badge>
+                    </motion.div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -303,12 +544,64 @@ function AnalyticsContent() {
           >
             <Card>
               <CardHeader>
+                <CardTitle>Customer Demographics</CardTitle>
+                <CardDescription>Visitor breakdown by gender and age</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-medium mb-2">Gender Distribution</h4>
+                      <div className="flex items-center gap-4">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-blue-600">{customerData?.male || 0}</div>
+                          <div className="text-sm text-muted-foreground">Male</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-pink-600">{customerData?.female || 0}</div>
+                          <div className="text-sm text-muted-foreground">Female</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Average Age</h4>
+                      <div className="text-2xl font-bold">{customerData?.averageAge || 0} years</div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="font-medium mb-2">Age Groups</h4>
+                    <div className="space-y-2">
+                      {customerData?.ageGroups && Object.entries(customerData.ageGroups).map(([age, count]) => (
+                        <motion.div
+                          key={age}
+                          className="flex items-center justify-between p-2 rounded-lg bg-muted"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                        >
+                          <span className="font-medium">{age}</span>
+                          <Badge variant="secondary">{count as number}</Badge>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <Card>
+              <CardHeader>
                 <CardTitle>Peak Hours</CardTitle>
                 <CardDescription>Busiest times of the day</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {analytics.peakHours.map((hour, index) => (
+                  {(analytics.peakHours || []).map((hour, index) => (
                     <motion.div
                       key={hour}
                       className="flex items-center justify-between p-2 rounded-lg bg-muted"
