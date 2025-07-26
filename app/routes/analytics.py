@@ -1,25 +1,31 @@
 """
 Analytics API Routes for Frontend Integration
 
-This module provides comprehensive analytics endpoints:
+This module provides comprehensive analytics endpoints matching frontend requirements:
 - Real-time mall analytics
 - Camera-specific analytics
 - Heatmap data
 - Historical trends
+- Section/rack analytics
+- Customer insights
+- Alerts & notifications
+- Time series data
 - WebSocket support
 """
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta
+from pydantic import BaseModel
 
 from ..database import get_db
 from ..dependencies import get_current_user
-from ..ai_solutions.analytics_engine import AnalyticsEngine
-from ..ai_solutions.websocket_manager import websocket_manager
-from ..ai_solutions.camera_worker import camera_worker_manager
-from ..ai_solutions.modules.person_tracking import PersonTracker
+from app.ai_solutions.analytics_engine import AnalyticsEngine
+from app.ai_solutions.communication.websocket_manager import websocket_manager
+from app.ai_solutions.camera_worker import camera_worker_manager
+from app.ai_solutions.modules.person_tracking import PersonTracker
+from app.crud import get_cameras_by_mall, get_mall, get_camera
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,303 +35,567 @@ router = APIRouter(
     tags=["analytics"]
 )
 
-# Default RTSP URL for the current camera
-DEFAULT_RTSP_URL = "rtsp://admin:admin1234@192.168.0.2:554/cam/realmonitor?channel=1&subtype=0"
+# Pydantic models for response validation
+class MallAnalytics(BaseModel):
+    totalVisitors: int
+    activeVisitors: int
+    averageDwellTime: int
+    peakHours: List[str]
+    popularSections: List[Dict[str, Any]]
 
-tracker_instance = None
+class RealTimeMetrics(BaseModel):
+    activeVisitors: int
+    currentPeakHour: bool
+    timestamp: str
 
-@router.get("/mall/{mall_id}")
+class HeatmapZone(BaseModel):
+    name: str
+    visitorCount: int
+    coordinates: List[List[int]]
+    density: float
+
+class HeatmapData(BaseModel):
+    mallId: int
+    zones: List[HeatmapZone]
+    timestamp: str
+
+class SectionAnalytics(BaseModel):
+    name: str
+    section: str
+    male: int
+    female: int
+    total: int
+    averageDwellTime: int
+
+class CustomerStats(BaseModel):
+    total: int
+    male: int
+    female: int
+    averageAge: int
+    ageGroups: Dict[str, int]
+
+class CameraAnalytics(BaseModel):
+    id: int
+    name: str
+    location: str
+    status: str
+    visitorCount: int
+    lastActive: Optional[str]
+    healthStatus: str
+
+class Alert(BaseModel):
+    id: int
+    type: str
+    message: str
+    severity: str
+    zone: str
+    time: str
+
+class TimeSeriesPoint(BaseModel):
+    time: str
+    visitors: int
+    interactions: int
+
+# ===== 1. MALL ANALYTICS (SUMMARY) =====
+@router.get("/mall/{mall_id}", response_model=MallAnalytics)
 async def get_mall_analytics(
     mall_id: int,
-    time_range: Optional[str] = Query("24h", description="Time range: 1h, 24h, 7d, 30d"),
+    range: Optional[str] = Query("day", description="Time range: hour, day, week, month"),
+    gender: Optional[str] = Query(None, description="Filter by gender: male, female, all"),
+    ageGroup: Optional[str] = Query(None, description="Filter by age group: 18-25, 26-35, 36-45, 46-55, 55+"),
+    zone: Optional[str] = Query(None, description="Filter by zone/section"),
+    cameraId: Optional[int] = Query(None, description="Filter by camera ID"),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get comprehensive analytics for a mall in frontend-compatible format"""
+    """Get comprehensive analytics for a mall from database"""
     try:
+        # Verify mall exists and user has access
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        # Create analytics engine
         analytics_engine = AnalyticsEngine(db)
-        # Use frontend-compatible format
-        metrics = analytics_engine.get_frontend_compatible_analytics(mall_id)
         
-        logger.info(f"Retrieved analytics for mall {mall_id}")
-        return metrics  # Return data directly without wrapper
+        # Get analytics with filters
+        analytics = analytics_engine.get_frontend_compatible_analytics(
+            mall_id=mall_id,
+            time_range=range,
+            gender_filter=gender,
+            age_filter=ageGroup,
+            zone_filter=zone,
+            camera_filter=cameraId
+        )
         
+        if "error" in analytics:
+            raise HTTPException(status_code=500, detail=analytics["error"])
+        
+        return analytics
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting mall analytics: {str(e)}")
+        logger.error(f"Error in get_mall_analytics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/realtime/{mall_id}")
+# ===== 2. REAL-TIME METRICS =====
+@router.get("/mall/{mall_id}/realtime", response_model=RealTimeMetrics)
 async def get_realtime_metrics(
     mall_id: int,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get real-time metrics for dashboard in frontend-compatible format"""
+    """Get real-time metrics from database"""
     try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
         analytics_engine = AnalyticsEngine(db)
-        # Use frontend-compatible realtime format
-        metrics = analytics_engine.get_realtime_status(mall_id)
+        realtime_data = analytics_engine.get_realtime_status(mall_id)
         
-        logger.info(f"Retrieved real-time metrics for mall {mall_id}")
-        return metrics  # Return data directly without wrapper
+        if "error" in realtime_data:
+            raise HTTPException(status_code=500, detail=realtime_data["error"])
         
+        return realtime_data
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting real-time metrics: {str(e)}")
+        logger.error(f"Error in get_realtime_metrics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/mall/{mall_id}/heatmap")
+# ===== 3. HEATMAP DATA =====
+@router.get("/mall/{mall_id}/heatmap", response_model=HeatmapData)
 async def get_heatmap_data(
     mall_id: int,
-    time_range: Optional[str] = Query("1h", description="Time range for heatmap"),
+    range: Optional[str] = Query("day", description="Time range: hour, day, week, month"),
+    gender: Optional[str] = Query(None, description="Filter by gender: male, female, all"),
+    ageGroup: Optional[str] = Query(None, description="Filter by age group"),
+    timeOfDay: Optional[str] = Query(None, description="Filter by time of day: morning, afternoon, evening, night"),
+    zone: Optional[str] = Query(None, description="Filter by zone"),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get heatmap data for mall visualization"""
+    """Get heatmap data from camera zones and customer data"""
     try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
         analytics_engine = AnalyticsEngine(db)
+        heatmap_data = analytics_engine.get_heatmap_data(
+            mall_id=mall_id,
+            time_range=range,
+            gender_filter=gender,
+            age_filter=ageGroup,
+            time_of_day=timeOfDay,
+            zone_filter=zone
+        )
         
-        # Get heatmap data
-        heatmap_data = analytics_engine._generate_heatmap(mall_id, datetime.utcnow())
+        if "error" in heatmap_data:
+            raise HTTPException(status_code=500, detail=heatmap_data["error"])
         
-        # Get zone definitions (mock for now)
-        zone_definitions = [
-            {"id": "electronics", "name": "Electronics", "coordinates": [0, 0, 3, 3]},
-            {"id": "clothing", "name": "Clothing", "coordinates": [3, 0, 6, 3]},
-            {"id": "food_court", "name": "Food Court", "coordinates": [6, 0, 10, 3]},
-            {"id": "shoes", "name": "Shoes", "coordinates": [0, 3, 3, 6]},
-            {"id": "accessories", "name": "Accessories", "coordinates": [3, 3, 6, 6]}
-        ]
+        return heatmap_data
         
-        return {
-            "success": True,
-            "data": {
-                "heatmap_matrix": heatmap_data,
-                "zones": zone_definitions,
-                "dimensions": {"width": 10, "height": 10},
-                "time_range": time_range,
-                "generated_at": datetime.utcnow().isoformat()
-            }
-        }
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting heatmap data: {str(e)}")
+        logger.error(f"Error in get_heatmap_data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/camera/{camera_id}/details")
+# ===== 4. SECTION ANALYTICS =====
+@router.get("/mall/{mall_id}/sections", response_model=List[SectionAnalytics])
+async def get_section_analytics(
+    mall_id: int,
+    range: Optional[str] = Query("day", description="Time range: hour, day, week, month"),
+    gender: Optional[str] = Query(None, description="Filter by gender: male, female, all"),
+    ageGroup: Optional[str] = Query(None, description="Filter by age group"),
+    section: Optional[str] = Query(None, description="Filter by section name"),
+    rack: Optional[str] = Query(None, description="Filter by rack name"),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get section/rack analytics from camera zones"""
+    try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        analytics_engine = AnalyticsEngine(db)
+        sections = analytics_engine.get_section_analytics(
+            mall_id=mall_id,
+            time_range=range,
+            gender_filter=gender,
+            age_filter=ageGroup,
+            section_filter=section,
+            rack_filter=rack
+        )
+        
+        return sections
+        
+    except Exception as e:
+        logger.error(f"Error in get_section_analytics: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== 5. CUSTOMER INSIGHTS =====
+@router.get("/mall/{mall_id}/customers", response_model=CustomerStats)
+async def get_customer_insights(
+    mall_id: int,
+    range: Optional[str] = Query("day", description="Time range: hour, day, week, month"),
+    gender: Optional[str] = Query(None, description="Filter by gender: male, female, all"),
+    ageGroup: Optional[str] = Query(None, description="Filter by age group"),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get customer demographics and insights from database"""
+    try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        analytics_engine = AnalyticsEngine(db)
+        customer_stats = analytics_engine.get_customer_insights(
+            mall_id=mall_id,
+            time_range=range,
+            gender_filter=gender,
+            age_filter=ageGroup
+        )
+        
+        if "error" in customer_stats:
+            raise HTTPException(status_code=500, detail=customer_stats["error"])
+        
+        return customer_stats
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_customer_insights: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== 6. CAMERA LIST =====
+@router.get("/mall/{mall_id}/cameras")
+async def get_camera_list(
+    mall_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get list of cameras for a mall"""
+    try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        cameras = get_cameras_by_mall(db, mall_id)
+        
+        camera_list = []
+        for camera in cameras:
+            camera_list.append({
+                "id": camera.id,
+                "name": camera.name,
+                "location": camera.location,
+                "status": "active" if camera.fov_zones else "inactive",
+                "lastActive": camera.created_at.isoformat() if camera.created_at else None
+            })
+        
+        return camera_list
+        
+    except Exception as e:
+        logger.error(f"Error in get_camera_list: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== 7. CAMERA ANALYTICS =====
+@router.get("/cameras/mall/{mall_id}", response_model=List[CameraAnalytics])
 async def get_camera_analytics(
-    camera_id: int,
+    mall_id: int,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get analytics for a specific camera"""
+    """Get camera analytics from database"""
     try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
         analytics_engine = AnalyticsEngine(db)
-        camera_analytics = analytics_engine.calculate_camera_analytics(camera_id)
+        camera_analytics = analytics_engine.get_camera_analytics(mall_id)
         
-        # Get worker status if available
-        worker_status = camera_worker_manager.get_worker_status(camera_id)
-        
-        return {
-            "success": True,
-            "data": {
-                **camera_analytics,
-                "worker_status": worker_status
-            }
-        }
+        return camera_analytics
         
     except Exception as e:
-        logger.error(f"Error getting camera analytics: {str(e)}")
+        logger.error(f"Error in get_camera_analytics: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== 8. ALERTS =====
+@router.get("/mall/{mall_id}/alerts", response_model=List[Alert])
+async def get_alerts(
+    mall_id: int,
+    since: Optional[str] = Query(None, description="Get alerts since timestamp"),
+    zone: Optional[str] = Query(None, description="Filter by zone"),
+    severity: Optional[str] = Query(None, description="Filter by severity: info, warning, error"),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get alerts based on customer data and zone activity"""
+    try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        analytics_engine = AnalyticsEngine(db)
+        alerts = analytics_engine.get_alerts(
+            mall_id=mall_id,
+            since=since,
+            zone_filter=zone,
+            severity_filter=severity
+        )
+        
+        return alerts
+        
+    except Exception as e:
+        logger.error(f"Error in get_alerts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== 9. TIME SERIES DATA =====
+@router.get("/mall/{mall_id}/timeseries", response_model=List[TimeSeriesPoint])
+async def get_timeseries_data(
+    mall_id: int,
+    metric: str = Query("visitors", description="Metric: visitors, interactions, dwellTime"),
+    range: Optional[str] = Query("day", description="Time range: hour, day, week, month"),
+    zone: Optional[str] = Query(None, description="Filter by zone"),
+    cameraId: Optional[int] = Query(None, description="Filter by camera ID"),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get time series data for graphs"""
+    try:
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        analytics_engine = AnalyticsEngine(db)
+        timeseries = analytics_engine.get_timeseries_data(
+            mall_id=mall_id,
+            metric=metric,
+            time_range=range,
+            zone_filter=zone,
+            camera_filter=cameraId
+        )
+        
+        return timeseries
+        
+    except Exception as e:
+        logger.error(f"Error in get_timeseries_data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== 10. SYSTEM STATUS =====
 @router.get("/system/status")
 async def get_system_status(
     current_user: dict = Depends(get_current_user)
 ):
-    """Get system-wide analytics status"""
+    """Get overall system status"""
     try:
-        # Get worker statuses
-        worker_statuses = camera_worker_manager.get_all_worker_statuses()
+        # Get camera worker status
+        camera_status = camera_worker_manager.get_status()
         
-        # Get WebSocket statistics
-        websocket_stats = websocket_manager.get_statistics()
+        # Get WebSocket status
+        websocket_status = websocket_manager.get_status()
         
         return {
-            "success": True,
-            "data": {
-                "camera_workers": worker_statuses,
-                "websocket_stats": websocket_stats,
-                "system_health": "healthy",
-                "uptime": "active",
-                "last_updated": datetime.utcnow().isoformat()
-            }
+            "status": "operational",
+            "cameras": camera_status,
+            "websockets": websocket_status,
+            "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Error getting system status: {str(e)}")
+        logger.error(f"Error in get_system_status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== 11. CAMERA CONTROL =====
 @router.post("/camera/{camera_id}/start")
-async def start_camera_processing(
+async def start_camera(
     camera_id: int,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """Start processing for a specific camera"""
+    """Start camera processing"""
     try:
-        await camera_worker_manager.start_camera_worker(camera_id)
+        # Verify camera exists in database
+        camera = get_camera(db, camera_id)
+        if not camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
         
-        return {
-            "success": True,
-            "message": f"Started processing for camera {camera_id}",
-            "camera_id": camera_id
-        }
+        # Check if camera worker exists, if not create it
+        if camera_id not in camera_worker_manager.workers:
+            # Create RTSP URL from camera data
+            rtsp_url = f"rtsp://{camera.username}:{camera.password}@{camera.ip_address}/stream"
+            camera_worker_manager.add_camera(camera_id, camera.name, rtsp_url)
         
+        # Start camera worker
+        success = camera_worker_manager.start_camera(camera_id)
+        
+        if success:
+            return {"message": f"Camera {camera_id} started successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to start camera")
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error starting camera processing: {str(e)}")
+        logger.error(f"Error in start_camera: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/camera/{camera_id}/stop")
-async def stop_camera_processing(
+async def stop_camera(
     camera_id: int,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """Stop processing for a specific camera"""
+    """Stop camera processing"""
     try:
-        await camera_worker_manager.stop_camera_worker(camera_id)
+        # Verify camera exists in database
+        camera = get_camera(db, camera_id)
+        if not camera:
+            raise HTTPException(status_code=404, detail="Camera not found")
         
-        return {
-            "success": True,
-            "message": f"Stopped processing for camera {camera_id}",
-            "camera_id": camera_id
-        }
+        # Check if camera worker exists
+        if camera_id not in camera_worker_manager.workers:
+            return {"message": f"Camera {camera_id} is not running"}
         
+        # Stop camera worker
+        success = camera_worker_manager.stop_camera(camera_id)
+        
+        if success:
+            return {"message": f"Camera {camera_id} stopped successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to stop camera")
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error stopping camera processing: {str(e)}")
+        logger.error(f"Error in stop_camera: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/mall/{mall_id}/start_all_cameras")
-async def start_all_mall_cameras(
+async def start_all_cameras(
     mall_id: int,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    """Start processing for all cameras in a mall"""
+    """Start all cameras for a mall"""
     try:
-        await camera_worker_manager.start_all_cameras(mall_id)
+        # Verify mall exists
+        mall = get_mall(db, mall_id)
+        if not mall:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        
+        # Get all cameras for mall
+        cameras = get_cameras_by_mall(db, mall_id)
+        
+        started_count = 0
+        for camera in cameras:
+            # Check if camera worker exists, if not create it
+            if camera.id not in camera_worker_manager.workers:
+                rtsp_url = f"rtsp://{camera.username}:{camera.password}@{camera.ip_address}/stream"
+                camera_worker_manager.add_camera(camera.id, camera.name, rtsp_url)
+            
+            # Start camera worker
+            if camera_worker_manager.start_camera(camera.id):
+                started_count += 1
         
         return {
-            "success": True,
-            "message": f"Started processing for all cameras in mall {mall_id}",
-            "mall_id": mall_id
+            "message": f"Started {started_count} out of {len(cameras)} cameras",
+            "started": started_count,
+            "total": len(cameras)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error starting all cameras: {str(e)}")
+        logger.error(f"Error in start_all_cameras: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# WebSocket Endpoints
-@router.websocket("/ws/mall/{mall_id}")
-async def websocket_mall_analytics(websocket: WebSocket, mall_id: int):
-    """WebSocket endpoint for real-time mall analytics"""
+# ===== 12. WEBSOCKET ENDPOINTS =====
+@router.websocket("/ws/analytics/{mall_id}")
+async def websocket_analytics(
+    websocket: WebSocket,
+    mall_id: int,
+    db: Session = Depends(get_db)
+):
+    """WebSocket for real-time analytics updates"""
     try:
-        # Accept connection
-        connection = await websocket_manager.connect(websocket)
-        
-        # Subscribe to mall room
-        await websocket_manager.join_room(websocket, f"mall_{mall_id}")
+        await websocket_manager.connect(websocket, f"analytics_{mall_id}")
         
         # Send initial data
-        db = next(get_db())
         analytics_engine = AnalyticsEngine(db)
-        initial_data = analytics_engine.calculate_real_time_metrics(mall_id)
-        
-        await connection.send_message({
-            "type": "initial_data",
+        initial_data = analytics_engine.get_frontend_compatible_analytics(mall_id)
+        await websocket.send_json({
+            "type": "analytics_update",
             "data": initial_data
         })
         
-        # Keep connection alive and handle messages
-        while True:
-            try:
-                message = await websocket.receive_text()
-                await websocket_manager.handle_client_message(websocket, message)
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"Error in WebSocket communication: {str(e)}")
-                break
-        
+        try:
+            while True:
+                # Keep connection alive and handle incoming messages
+                data = await websocket.receive_text()
+                # Handle any client messages if needed
+                
+        except WebSocketDisconnect:
+            websocket_manager.disconnect(websocket, f"analytics_{mall_id}")
+            
     except Exception as e:
         logger.error(f"WebSocket error: {str(e)}")
-    finally:
-        await websocket_manager.disconnect(websocket)
+        if websocket.client_state.value != 3:  # Not disconnected
+            await websocket.close()
 
 @router.websocket("/ws/camera/{camera_id}")
-async def websocket_camera_detections(websocket: WebSocket, camera_id: int):
-    """WebSocket endpoint for real-time camera detections"""
+async def websocket_camera(
+    websocket: WebSocket,
+    camera_id: int,
+    db: Session = Depends(get_db)
+):
+    """WebSocket for camera-specific updates"""
     try:
-        # Accept connection
-        connection = await websocket_manager.connect(websocket)
+        await websocket_manager.connect(websocket, f"camera_{camera_id}")
         
-        # Subscribe to camera room
-        await websocket_manager.join_room(websocket, f"camera_{camera_id}")
-        
-        # Send initial status
-        worker_status = camera_worker_manager.get_worker_status(camera_id)
-        await connection.send_message({
-            "type": "camera_status",
-            "data": worker_status
-        })
-        
-        # Keep connection alive and handle messages
-        while True:
-            try:
-                message = await websocket.receive_text()
-                await websocket_manager.handle_client_message(websocket, message)
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"Error in camera WebSocket: {str(e)}")
-                break
-        
+        try:
+            while True:
+                # Keep connection alive
+                data = await websocket.receive_text()
+                
+        except WebSocketDisconnect:
+            websocket_manager.disconnect(websocket, f"camera_{camera_id}")
+            
     except Exception as e:
         logger.error(f"Camera WebSocket error: {str(e)}")
-    finally:
-        await websocket_manager.disconnect(websocket)
+        if websocket.client_state.value != 3:
+            await websocket.close()
 
 @router.websocket("/ws/system")
-async def websocket_system_status(websocket: WebSocket):
-    """WebSocket endpoint for system-wide status updates"""
+async def websocket_system(websocket: WebSocket):
+    """WebSocket for system-wide updates"""
     try:
-        # Accept connection
-        connection = await websocket_manager.connect(websocket)
+        await websocket_manager.connect(websocket, "system")
         
-        # Subscribe to system room
-        await websocket_manager.join_room(websocket, "system")
-        
-        # Send initial system status
-        worker_statuses = camera_worker_manager.get_all_worker_statuses()
-        websocket_stats = websocket_manager.get_statistics()
-        
-        await connection.send_message({
-            "type": "system_status",
-            "data": {
-                "camera_workers": worker_statuses,
-                "websocket_stats": websocket_stats,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        })
-        
-        # Keep connection alive
-        while True:
-            try:
-                message = await websocket.receive_text()
-                await websocket_manager.handle_client_message(websocket, message)
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                logger.error(f"Error in system WebSocket: {str(e)}")
-                break
-        
+        try:
+            while True:
+                # Keep connection alive
+                data = await websocket.receive_text()
+                
+        except WebSocketDisconnect:
+            websocket_manager.disconnect(websocket, "system")
+            
     except Exception as e:
         logger.error(f"System WebSocket error: {str(e)}")
-    finally:
-        await websocket_manager.disconnect(websocket) 
+        if websocket.client_state.value != 3:
+            await websocket.close()

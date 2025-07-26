@@ -1,3 +1,4 @@
+# Backend dependencies
 fastapi
 uvicorn[standard]==0.24.0
 sqlalchemy
@@ -5,8 +6,6 @@ pydantic
 python-jose[cryptography]
 passlib[bcrypt]==1.7.4
 python-multipart
-opencv-python
-numpy
 python-dotenv
 alembic
 psycopg2-binary
@@ -23,3 +22,29 @@ python-dateutil==2.8.2
 pytz==2023.3
 asyncio-mqtt==0.15.0
 websocket-client
+
+# AI Modules - Computer Vision and Deep Learning
+opencv-python>=4.8.0
+numpy>=1.24.0
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+Pillow>=10.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+shapely>=2.0.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+
+# Optional: GPU Support (uncomment if using CUDA)
+# torch>=2.0.0+cu118
+# torchvision>=0.15.0+cu118
+
+# Optional: Web Dashboard (for future enhancement)
+# flask>=2.3.0
+# flask-socketio>=5.3.0
+
+# Development and Testing (optional)
+# pytest>=7.4.0
+# black>=23.0.0
+# flake8>=6.0.0

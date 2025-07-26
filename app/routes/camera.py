@@ -14,6 +14,7 @@ from datetime import datetime
 import time
 import logging
 import os
+from app.ai_solutions.camera_worker import camera_worker_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -95,7 +96,6 @@ async def get_camera_frame(
         
         # Try to get frame from camera worker first (if available)
         try:
-            from ..ai_solutions.camera_worker import camera_worker_manager
             # Extract camera_id from request if available
             camera_id = request.get("camera_id")
             if camera_id and camera_id in camera_worker_manager.workers:
@@ -255,8 +255,6 @@ async def get_optimized_camera_stream(
 ):
     """Get optimized camera stream with quality control"""
     try:
-        from ..ai_solutions.camera_worker import camera_worker_manager
-        
         # Get camera details
         db_camera = get_camera(db, camera_id)
         if not db_camera:
@@ -629,7 +627,7 @@ async def test_camera_mappings(
                 print(f"Processing object: {obj['name']}")
                 print(f"src_points (camera): {src_points}")
                 print(f"dst_points (mall): {dst_points}")
-                
+
                 # Compute homography matrix (warp mall map onto camera frame) - EXACTLY like test_homography_api.py
                 H, status = cv2.findHomography(dst_points, src_points, method=cv2.RANSAC)
                 if H is None:
@@ -663,17 +661,17 @@ async def test_camera_mappings(
             print("No homography transformations applied - showing debug info")
             final_result = camera_img.copy()
             # Draw debug information
-            for zone in camera.homography_map["zones"]:
-                if not zone.get("objects"):
-                    continue
-                for obj in zone["objects"]:
+        for zone in camera.homography_map["zones"]:
+            if not zone.get("objects"):
+                continue
+            for obj in zone["objects"]:
                     if len(obj.get("src_points", [])) == 4:
                         src_pts = np.array(obj["src_points"], dtype=np.float32)
                         cv2.polylines(final_result, [np.int32(src_pts)], True, (0, 0, 255), 3)
                         center_x = int(np.mean(src_pts[:, 0]))
                         center_y = int(np.mean(src_pts[:, 1]))
                         cv2.putText(final_result, obj["name"], (center_x - 50, center_y), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
         # Encode the final result as JPEG
         _, buffer = cv2.imencode('.jpg', final_result)

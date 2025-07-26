@@ -1,0 +1,316 @@
+Absolutely! Here’s a detailed technical document describing all the backend APIs, data structures, and filters needed to power your analytics dashboard, including real-time, heatmap, and advanced analytics features.
+
+---
+
+# 📊 Analytics Dashboard: Backend API & Data Requirements
+
+## 1. **Overview**
+
+The analytics dashboard provides real-time and historical insights for mall management, including:
+- Real-time metrics (visitors, dwell time, active cameras)
+- Heatmaps (zone-wise density)
+- Section/rack analytics
+- Customer insights (demographics, peak hours)
+- Camera monitoring
+- Alerts & notifications
+
+To support these features, the backend must expose a set of RESTful and WebSocket APIs, with flexible filtering and efficient data structures.
+
+---
+
+## 2. **API Endpoints & Data Contracts**
+
+### 2.1. **Mall Analytics (Summary)**
+**Endpoint:**  
+`GET /analytics/mall/{mall_id}?range={hour|day|week|month}`
+
+**Returns:**  
+```json
+{
+  "totalVisitors": 1245,
+  "activeVisitors": 45,
+  "averageDwellTime": 45,
+  "peakHours": ["10:00-11:00", "14:00-15:00"],
+  "popularSections": [
+    { "name": "Electronics", "visitorCount": 320 },
+    { "name": "Clothing", "visitorCount": 290 }
+  ]
+}
+```
+
+**Filters:**
+- `range`: hour, day, week, month (default: day)
+- (Optional) `gender`, `ageGroup`, `zone`, `cameraId`
+
+---
+
+### 2.2. **Real-Time Metrics**
+**Endpoint:**  
+`GET /analytics/mall/{mall_id}/realtime`
+
+**Returns:**  
+```json
+{
+  "activeVisitors": 45,
+  "currentPeakHour": false,
+  "timestamp": "2024-06-10T12:34:56Z"
+}
+```
+
+---
+
+### 2.3. **Heatmap Data**
+**Endpoint:**  
+`GET /analytics/mall/{mall_id}/heatmap?range={hour|day|week|month}`
+
+**Returns:**  
+```json
+{
+  "mallId": 1,
+  "zones": [
+    {
+      "name": "Electronics",
+      "visitorCount": 150,
+      "coordinates": [[20, 30], [40, 50], ...], // Polygon for zone
+      "density": 0.8
+    }
+  ],
+  "timestamp": "2024-06-10T12:34:56Z"
+}
+```
+
+**Filters:**
+- `range`
+- `gender`
+- `ageGroup`
+- `timeOfDay`
+- `zone`
+
+---
+
+### 2.4. **Section/Rack Analytics**
+**Endpoint:**  
+`GET /analytics/mall/{mall_id}/sections?range={hour|day|week|month}`
+
+**Returns:**  
+```json
+[
+  {
+    "name": "Rack 1",
+    "section": "Electronics",
+    "male": 45,
+    "female": 65,
+    "total": 110,
+    "averageDwellTime": 32
+  }
+]
+```
+
+**Filters:**
+- `range`
+- `gender`
+- `ageGroup`
+- `section`
+- `rack`
+
+---
+
+### 2.5. **Customer Insights**
+**Endpoint:**  
+`GET /analytics/mall/{mall_id}/customers?range={hour|day|week|month}`
+
+**Returns:**  
+```json
+{
+  "total": 1245,
+  "male": 600,
+  "female": 645,
+  "averageAge": 32,
+  "ageGroups": {
+    "18-25": 200,
+    "26-35": 400,
+    "36-45": 300,
+    "46-55": 200,
+    "55+": 145
+  }
+}
+```
+
+**Filters:**
+- `range`
+- `gender`
+- `ageGroup`
+
+---
+
+### 2.6. **Camera List & Status**
+**Endpoint:**  
+`GET /mall/{mall_id}/cameras`
+
+**Returns:**  
+```json
+[
+  {
+    "id": 1,
+    "name": "Entrance Cam",
+    "location": "Main Entrance",
+    "status": "active",
+    "lastActive": "2024-06-10T12:34:56Z"
+  }
+]
+```
+
+---
+
+### 2.7. **Camera Analytics**
+**Endpoint:**  
+`GET /analytics/cameras/mall/{mall_id}`
+
+**Returns:**  
+```json
+[
+  {
+    "id": 1,
+    "name": "Entrance Cam",
+    "location": "Main Entrance",
+    "status": "active",
+    "visitorCount": 120,
+    "lastActive": "2024-06-10T12:34:56Z",
+    "healthStatus": "good"
+  }
+]
+```
+
+---
+
+### 2.8. **Alerts & Notifications (Real-Time)**
+**Endpoint:**  
+`GET /analytics/mall/{mall_id}/alerts?since={timestamp}`  
+or via **WebSocket**:  
+`ws://.../ws/analytics/{mall_id}`
+
+**Returns:**  
+```json
+[
+  {
+    "id": 1,
+    "type": "high_traffic",
+    "message": "High traffic detected in Electronics section",
+    "severity": "warning",
+    "zone": "Electronics",
+    "time": "2024-06-10T12:34:56Z"
+  }
+]
+```
+
+---
+
+### 2.9. **Time Series Data (for Graphs)**
+**Endpoint:**  
+`GET /analytics/mall/{mall_id}/timeseries?metric=visitors&range=day`
+
+**Returns:**  
+```json
+[
+  { "time": "09:00", "visitors": 45, "interactions": 120 },
+  { "time": "10:00", "visitors": 78, "interactions": 210 }
+]
+```
+
+**Filters:**
+- `metric`: visitors, interactions, dwellTime, etc.
+- `range`
+- `zone`
+- `cameraId`
+
+---
+
+## 3. **Filters & Query Parameters**
+
+- **Time Range:** `range=hour|day|week|month`
+- **Zone/Section:** `zone=Electronics`
+- **Rack:** `rack=Rack 1`
+- **Gender:** `gender=male|female|all`
+- **Age Group:** `ageGroup=18-25|26-35|36-45|46-55|55+`
+- **Camera:** `cameraId=1`
+- **Metric:** `metric=visitors|interactions|dwellTime`
+- **Time of Day:** `timeOfDay=morning|afternoon|evening|night`
+
+---
+
+## 4. **WebSocket (for Real-Time Updates)**
+
+- **Connect:** `ws://.../ws/analytics/{mall_id}`
+- **Events:**
+  - `analytics_update` (summary, heatmap, timeseries)
+  - `alert` (new alert/notification)
+  - `visitor_update` (real-time visitor count)
+
+---
+
+## 5. **Data Structure Summary**
+
+- **MallAnalytics:** summary stats, popular sections, peak hours
+- **HeatmapData:** zone polygons, visitor counts, density
+- **SectionAnalytics:** per-section/rack stats, gender split, dwell time
+- **CustomerStats:** demographic breakdowns
+- **CameraAnalytics:** per-camera stats, health, last active
+- **Alert:** id, type, message, severity, zone, time
+- **TimeSeries:** time, visitors, interactions
+
+---
+
+## 6. **Example Dashboard Data Flow**
+
+1. **On load:**  
+   - Fetch `/analytics/mall/{mall_id}` for summary
+   - Fetch `/mall/{mall_id}/cameras` for camera list
+   - Fetch `/analytics/mall/{mall_id}/heatmap` for heatmap
+   - Fetch `/analytics/mall/{mall_id}/timeseries` for graphs
+
+2. **On filter change:**  
+   - Re-fetch with new query params (e.g., `?range=week&zone=Electronics`)
+
+3. **For real-time:**  
+   - Open WebSocket, listen for `analytics_update`, `alert`, `visitor_update`
+
+---
+
+## 7. **Backend Requirements Checklist**
+
+- [ ] REST endpoints for all analytics, heatmap, and camera data
+- [ ] Support for all filters (time, zone, gender, age, camera, etc.)
+- [ ] Efficient aggregation for time series and heatmap
+- [ ] WebSocket for real-time updates and alerts
+- [ ] Proper data validation and error handling
+- [ ] Fast response times for dashboard interactivity
+
+---
+
+## 8. **Optional Advanced Features**
+
+- **Export/Download:** CSV/Excel export of analytics
+- **Custom Alerts:** User-defined alert thresholds
+- **Historical Playback:** Replay heatmap/time series for any day
+- **Anomaly Detection:** Highlight unusual patterns
+
+---
+
+# **Summary Table**
+
+| Feature                | API Endpoint                                 | Filters Supported                | Data Returned                        |
+|------------------------|----------------------------------------------|----------------------------------|--------------------------------------|
+| Summary Stats          | `/analytics/mall/{mall_id}`                  | range, gender, age, zone, camera | MallAnalytics                        |
+| Real-Time Metrics      | `/analytics/mall/{mall_id}/realtime`         | -                                | RealTimeMetrics                      |
+| Heatmap                | `/analytics/mall/{mall_id}/heatmap`          | range, gender, age, zone         | HeatmapData                          |
+| Section Analytics      | `/analytics/mall/{mall_id}/sections`         | range, gender, age, section      | SectionAnalytics[]                   |
+| Customer Insights      | `/analytics/mall/{mall_id}/customers`        | range, gender, age               | CustomerStats                        |
+| Camera List            | `/mall/{mall_id}/cameras`                    | -                                | Camera[]                             |
+| Camera Analytics       | `/analytics/cameras/mall/{mall_id}`          | -                                | CameraAnalytics[]                    |
+| Alerts                 | `/analytics/mall/{mall_id}/alerts`           | since, zone, severity            | Alert[]                              |
+| Time Series            | `/analytics/mall/{mall_id}/timeseries`       | metric, range, zone, camera      | TimeSeries[]                         |
+| Real-Time WebSocket    | `/ws/analytics/{mall_id}`                    | -                                | analytics_update, alert, visitor_update |
+
+---
+
+**If you need example request/response payloads, or want to see a Swagger/OpenAPI spec, let me know!**
