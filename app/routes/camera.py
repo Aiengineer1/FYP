@@ -577,6 +577,43 @@ async def test_camera_mappings(
         homography_applied = False
         
         for zone in camera.homography_map["zones"]:
+            # First, process zone-level homography if zone has points
+            if len(zone.get("src_points", [])) == 4 and len(zone.get("dst_points", [])) == 4:
+                zone_src_points = np.array(zone["src_points"], dtype=np.float32)  # Camera frame points
+                zone_dst_points = np.array(zone["dst_points"], dtype=np.float32)  # Mall map points
+                
+                print(f"Processing zone: {zone.get('name', 'unknown')}")
+                print(f"zone_src_points (camera): {zone_src_points}")
+                print(f"zone_dst_points (mall): {zone_dst_points}")
+                
+                # Compute homography matrix for zone (warp mall map onto camera frame)
+                H_zone, status_zone = cv2.findHomography(zone_dst_points, zone_src_points, method=cv2.RANSAC)
+                if H_zone is not None:
+                    print(f"Homography Matrix for zone {zone.get('name', 'unknown')}:\n{H_zone}")
+                    
+                    # Warp mall map to camera frame perspective for zone
+                    warped_map_zone = cv2.warpPerspective(mall_map_img, H_zone, TARGET_SIZE)
+                    
+                    # Create mask for the zone polygon (on camera frame)
+                    mask_zone = np.zeros_like(camera_img, dtype=np.uint8)
+                    cv2.fillConvexPoly(mask_zone, np.int32(zone_src_points), (255, 255, 255))
+                    
+                    # Masked warped map for zone (only inside polygon)
+                    masked_warped_zone = cv2.bitwise_and(warped_map_zone, mask_zone)
+                    
+                    # Blend masked warped map with camera frame for zone (blue color for zone)
+                    blended_zone = cv2.addWeighted(final_result, 1, masked_warped_zone, 0.4, 0)
+                    
+                    # Draw zone polygon outline on blended image (blue for zone)
+                    cv2.polylines(blended_zone, [np.int32(zone_src_points)], True, (255, 0, 0), 3)
+                    
+                    final_result = blended_zone.copy()
+                    homography_applied = True
+                    print(f"Successfully applied homography transformation for zone {zone.get('name', 'unknown')}")
+                else:
+                    print(f"Failed to compute homography for zone {zone.get('name', 'unknown')}")
+            
+            # Then process objects within the zone
             if not zone.get("objects"):
                 continue
                 
