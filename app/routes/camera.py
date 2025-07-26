@@ -535,91 +535,111 @@ async def test_camera_mappings(
 
         # Convert mall map image bytes to numpy array
         nparr = np.frombuffer(mall.map_image, np.uint8)
-        lab_map = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if lab_map is None:
+        mall_map_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if mall_map_img is None:
             raise ValueError("Failed to decode mall map image")
         
-        # Resize lab_map to the same target size to ensure consistent coordinate systems
-        lab_map = cv2.resize(lab_map, (1280, 720), interpolation=cv2.INTER_AREA)
+        # Resize mall map to target size for consistency
+        mall_map_img = cv2.resize(mall_map_img, TARGET_SIZE, interpolation=cv2.INTER_AREA)
+        print("Resized mall map shape:", mall_map_img.shape)
 
-        # Get camera connection
-        if camera_id not in camera_connections:
-            # Construct RTSP URL with the correct format
+        # Create a blank camera frame for demonstration (or get actual camera frame)
+        camera_img = np.zeros((TARGET_SIZE[1], TARGET_SIZE[0], 3), dtype=np.uint8)
+        camera_img[:] = (50, 50, 50)  # Dark gray background
+        
+        # Get real-time camera frame using the correct RTSP URL format
+        try:
             rtsp_url = f"rtsp://{camera.username}:{camera.password}@{camera.ip_address}:554/cam/realmonitor?channel=1&subtype=0"
-            logger.info(f"Attempting to connect to RTSP URL: {rtsp_url}")
+            print(f"Getting camera frame from: {rtsp_url}")
             
             cap = cv2.VideoCapture(rtsp_url)
-            
             if not cap.isOpened():
-                logger.error(f"Failed to open camera stream with URL: {rtsp_url}")
-                raise HTTPException(status_code=500, detail="Failed to open camera stream")
+                raise Exception("Could not open RTSP stream")
             
-            camera_connections[camera_id] = {
-                'cap': cap,
-                'last_access': datetime.now()
-            }
-            logger.info(f"Successfully connected to camera {camera_id}")
+            ret, frame = cap.read()
+            cap.release()
+            
+            if not ret:
+                raise Exception("Failed to read frame from RTSP")
+            
+            camera_img = cv2.resize(frame, TARGET_SIZE)
+            print("Successfully got real-time camera frame")
+            
+        except Exception as e:
+            print(f"Could not get real-time camera frame: {e}")
+            # Use blank frame as fallback
+            print("Using blank frame as fallback")
+            camera_img = np.zeros((TARGET_SIZE[1], TARGET_SIZE[0], 3), dtype=np.uint8)
+            camera_img[:] = (50, 50, 50)  # Dark gray background
+
+        # Process each zone and apply homography transformation (exactly like test_homography_api.py)
+        final_result = camera_img.copy()
+        homography_applied = False
         
-        # Get frame
-        cap = camera_connections[camera_id]['cap']
-        ret, frame = cap.read()
-        if not ret:
-            logger.error(f"Failed to read frame from camera {camera_id}")
-            raise HTTPException(status_code=500, detail="Failed to read frame")
-
-        frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
-        print("Resized frame shape:", frame.shape)
-
-        # Resize frame to match target size
-        frame_resized = cv2.resize(frame, TARGET_SIZE, interpolation=cv2.INTER_AREA)
-
-        # Create a copy of the lab_map to draw debug points on
-        map_with_debug_points = lab_map.copy()
-
-        # Apply mappings and overlay lab map
         for zone in camera.homography_map["zones"]:
             if not zone.get("objects"):
                 continue
                 
             for obj in zone["objects"]:
+                # Check if we have both src_points (camera) and dst_points (mall map)
                 if len(obj.get("src_points", [])) != 4 or len(obj.get("dst_points", [])) != 4:
+                    print(f"Skipping {obj.get('name', 'unknown')}: insufficient points")
                     continue
                 
-                # Get source and destination points
-                src_pts = np.array(obj["src_points"], dtype=np.float32)
-                dst_pts = np.array(obj["dst_points"], dtype=np.float32)
-
-                # --- Draw debug points on the map image ---
-                cv2.polylines(map_with_debug_points, [np.int32(dst_pts)], True, (0, 0, 255), 3) # Draw in red
-                # Add object name on the map for clarity
-                (text_width, text_height), _ = cv2.getTextSize(obj["name"], cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
-                center_x = int(np.mean(dst_pts[:, 0]))
-                center_y = int(np.mean(dst_pts[:, 1]))
-                cv2.putText(map_with_debug_points, obj["name"], (center_x - text_width // 2, center_y + text_height // 2), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-
-
-                # --- Perform homography and overlay on camera frame ---
-                H, _ = cv2.findHomography(dst_pts, src_pts, method=cv2.RANSAC)
-                warped_map = cv2.warpPerspective(lab_map, H, TARGET_SIZE)
-                mask = np.zeros_like(frame_resized, dtype=np.uint8)
-                cv2.fillConvexPoly(mask, np.int32(src_pts), (255, 255, 255))
+                src_points = np.array(obj["src_points"], dtype=np.float32)  # Camera frame points
+                dst_points = np.array(obj["dst_points"], dtype=np.float32)  # Mall map points
+                
+                print(f"Processing object: {obj['name']}")
+                print(f"src_points (camera): {src_points}")
+                print(f"dst_points (mall): {dst_points}")
+                
+                # Compute homography matrix (warp mall map onto camera frame) - EXACTLY like test_homography_api.py
+                H, status = cv2.findHomography(dst_points, src_points, method=cv2.RANSAC)
+                if H is None:
+                    print(f"Failed to compute homography for {obj['name']}")
+                    continue
+                
+                print(f"Homography Matrix for {obj['name']}:\n{H}")
+                
+                # Warp mall map to camera frame perspective - EXACTLY like test_homography_api.py
+                warped_map = cv2.warpPerspective(mall_map_img, H, TARGET_SIZE)
+                
+                # Create mask for the selected polygon (on camera frame) - EXACTLY like test_homography_api.py
+                mask = np.zeros_like(camera_img, dtype=np.uint8)
+                cv2.fillConvexPoly(mask, np.int32(src_points), (255, 255, 255))
+                
+                # Masked warped map (only inside polygon) - EXACTLY like test_homography_api.py
                 masked_warped = cv2.bitwise_and(warped_map, mask)
-                frame_resized = cv2.addWeighted(frame_resized, 1, masked_warped, 0.6, 0)
-                cv2.polylines(frame_resized, [np.int32(src_pts)], True, (0, 255, 0), 2)
-                center_x = int(np.mean(src_pts[:, 0]))
-                center_y = int(np.mean(src_pts[:, 1]))
-                cv2.putText(frame_resized, obj["name"], (center_x, center_y), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                
+                # Blend masked warped map with camera frame - EXACTLY like test_homography_api.py
+                blended = cv2.addWeighted(final_result, 1, masked_warped, 0.6, 0)
+                
+                # Draw polygon outline on blended image - EXACTLY like test_homography_api.py
+                cv2.polylines(blended, [np.int32(src_points)], True, (0, 255, 0), 2)
+                
+                final_result = blended.copy()
+                homography_applied = True
+                print(f"Successfully applied homography transformation for {obj['name']}")
+        
+        # If no homography transformations were applied, show debug info
+        if not homography_applied:
+            print("No homography transformations applied - showing debug info")
+            final_result = camera_img.copy()
+            # Draw debug information
+            for zone in camera.homography_map["zones"]:
+                if not zone.get("objects"):
+                    continue
+                for obj in zone["objects"]:
+                    if len(obj.get("src_points", [])) == 4:
+                        src_pts = np.array(obj["src_points"], dtype=np.float32)
+                        cv2.polylines(final_result, [np.int32(src_pts)], True, (0, 0, 255), 3)
+                        center_x = int(np.mean(src_pts[:, 0]))
+                        center_y = int(np.mean(src_pts[:, 1]))
+                        cv2.putText(final_result, obj["name"], (center_x - 50, center_y), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
-        # --- Create side-by-side diagnostic image ---
-        diagnostic_image = np.hstack([frame_resized, map_with_debug_points])
-
-        diagnostic_image = cv2.resize(diagnostic_image, (1280, 720), interpolation=cv2.INTER_AREA)
-        print("Resized diagnostic image shape:", diagnostic_image.shape)
-
-        # Convert frame to JPEG
-        _, buffer = cv2.imencode('.jpg', diagnostic_image)
+        # Encode the final result as JPEG
+        _, buffer = cv2.imencode('.jpg', final_result)
         frame_bytes = buffer.tobytes()
         
         return StreamingResponse(
