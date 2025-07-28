@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(
+    prefix="/auth",
     tags=["authentication"]
 )
 
@@ -79,7 +80,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
             "name": db_user.name,
             "mall_id": db_user.mall_id,
             "sub": db_user.email,  # Standard JWT claim
-            "exp": datetime.utcnow() + timedelta(hours=24)
+            "exp": datetime.utcnow() + timedelta(days=30)  # 30 days instead of 24 hours
         }
         access_token = create_access_token(data=token_data)
         
@@ -129,6 +130,42 @@ async def verify_token(current_user: dict = Depends(get_current_user)):
         raise HTTPException(
             status_code=401, 
             detail={"valid": False, "message": "Invalid token"}
+        )
+
+@router.post("/refresh-token")
+async def refresh_token(current_user: dict = Depends(get_current_user)):
+    """Refresh/extend the JWT token expiration time"""
+    try:
+        logger.info(f"Refreshing token for user: {current_user['email']}")
+        
+        # Create new token with extended expiration
+        from datetime import datetime, timedelta
+        token_data = {
+            "user_id": current_user["id"],
+            "email": current_user["email"],
+            "name": current_user["name"],
+            "mall_id": current_user["mall_id"],
+            "sub": current_user["email"],
+            "exp": datetime.utcnow() + timedelta(days=30)  # 30 days
+        }
+        new_access_token = create_access_token(data=token_data)
+        
+        logger.info(f"Token refreshed successfully for user: {current_user['email']}")
+        
+        return {
+            "access_token": new_access_token,
+            "user_id": current_user["id"],
+            "name": current_user["name"], 
+            "email": current_user["email"],
+            "mall_id": current_user["mall_id"],
+            "message": "Token refreshed successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error refreshing token: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Failed to refresh token", "code": "REFRESH_FAILED"}
         )
 
 @router.delete("/user/{user_id}")

@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     
     # Stop all camera workers
     try:
-        await camera_worker_manager.stop_all_cameras()
+        camera_worker_manager.stop_all_cameras()
     except Exception as e:
         logger.error(f"Error stopping camera workers: {e}")
 
@@ -62,12 +62,12 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(auth.router, tags=["authentication"])
+app.include_router(auth.router)
 app.include_router(mall.router, tags=["mall"])
-app.include_router(camera.router, prefix="/camera", tags=["camera"])
-app.include_router(customer.router, prefix="/customer", tags=["customer"])
-app.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
-app.include_router(id_management.router, prefix="/id-management", tags=["id-management"])
+app.include_router(camera.router)
+app.include_router(customer.router, tags=["customer"])
+app.include_router(analytics.router, tags=["analytics"])
+app.include_router(id_management.router, tags=["id-management"])
 
 # Mount Socket.IO app
 socketio_app = get_socket_app()

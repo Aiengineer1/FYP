@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 from starlette.responses import Response
+from typing import Optional, List
 from ..schemas.mall import MallCreate, MallResponse, MallResponseWithImage
-from ..crud import create_mall, get_mall, update_mall, delete_mall, get_user, update_user
+from ..crud import create_mall, get_mall, update_mall, delete_mall, get_user, update_user, get_cameras_by_mall
 from ..database import get_db
 from ..dependencies import get_current_user
-from typing import Optional
 import logging
+from ..schemas.camera import CameraResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -70,19 +71,53 @@ async def create_new_mall(
         logger.error(f"Error creating mall: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{mall_id}", response_model=MallResponse)
-def read_mall(
-    mall_id: int, 
+@router.get("/{mall_id}/cameras", response_model=List[CameraResponse])
+def get_cameras_by_mall_route(
+    mall_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):
+    """
+    Get all cameras associated with a specific mall.
+    """
     try:
-        db_mall = get_mall(db, mall_id)
-        if db_mall is None:
-            raise HTTPException(status_code=404, detail="Mall not found")
-        return db_mall
+        logger.info(f"Fetching cameras for mall ID: {mall_id}")
+        cameras = get_cameras_by_mall(db, mall_id)
+        logger.info(f"Found {len(cameras)} cameras for mall {mall_id}")
+        return cameras
     except Exception as e:
-        logger.error(f"Error fetching mall: {str(e)}")
+        logger.error(f"Error fetching cameras for mall {mall_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{mall_id}/cameras/{camera_id}", response_model=CameraResponse)
+def get_camera_by_mall_route(
+    mall_id: int,
+    camera_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get a specific camera by ID within a mall.
+    """
+    try:
+        logger.info(f"Fetching camera {camera_id} for mall ID: {mall_id}")
+        
+        # First get all cameras for the mall
+        cameras = get_cameras_by_mall(db, mall_id)
+        
+        # Find the specific camera
+        camera = next((cam for cam in cameras if cam.id == camera_id), None)
+        
+        if not camera:
+            logger.error(f"Camera {camera_id} not found in mall {mall_id}")
+            raise HTTPException(status_code=404, detail="Camera not found in this mall")
+        
+        logger.info(f"Found camera {camera_id} in mall {mall_id}")
+        return camera
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching camera {camera_id} for mall {mall_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{mall_id}/image")
@@ -100,6 +135,21 @@ async def get_mall_image(
         return Response(content=db_mall.map_image, media_type="image/jpeg")
     except Exception as e:
         logger.error(f"Error fetching mall image: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{mall_id}", response_model=MallResponse)
+def read_mall(
+    mall_id: int, 
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        db_mall = get_mall(db, mall_id)
+        if db_mall is None:
+            raise HTTPException(status_code=404, detail="Mall not found")
+        return db_mall
+    except Exception as e:
+        logger.error(f"Error fetching mall: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{mall_id}", response_model=MallResponse)

@@ -20,7 +20,10 @@ from app.ai_solutions.camera_worker import camera_worker_manager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    prefix="/camera",
+    tags=["camera"]
+)
 
 class RTSPRequest(BaseModel):
     rtsp_url: str
@@ -83,7 +86,7 @@ async def cleanup_cameras():
             conn_info['cap'].release()
     camera_connections.clear()
 
-@router.post("/camera/frame")
+@router.post("/frame")
 async def get_camera_frame(
     request: dict,  # {"rtsp_url": "rtsp://..."}
     current_user: dict = Depends(get_current_user)
@@ -94,11 +97,14 @@ async def get_camera_frame(
         if not rtsp_url:
             raise HTTPException(status_code=400, detail="rtsp_url is required")
         
+        logger.info(f"Processing camera frame request for RTSP URL: {rtsp_url}")
+        
         # Try to get frame from camera worker first (if available)
         try:
             # Extract camera_id from request if available
             camera_id = request.get("camera_id")
             if camera_id and camera_id in camera_worker_manager.workers:
+                logger.info(f"Using camera worker for camera_id: {camera_id}")
                 worker = camera_worker_manager.workers[camera_id]
                 frame = await worker.get_latest_frame()
                 if frame is not None:
@@ -117,20 +123,24 @@ async def get_camera_frame(
                             "Access-Control-Allow-Origin": "*"
                         }
                     )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Camera worker failed, falling back to direct RTSP: {str(e)}")
             pass  # Fall through to direct RTSP capture
         
         # Fallback to direct RTSP capture
+        logger.info(f"Attempting direct RTSP capture from: {rtsp_url}")
         cap = cv2.VideoCapture(rtsp_url)
         if not cap.isOpened():
-            raise HTTPException(status_code=404, detail="Camera frame not available")
+            logger.error(f"Failed to open RTSP stream: {rtsp_url}")
+            raise HTTPException(status_code=404, detail="Camera frame not available - check RTSP URL and credentials")
         
         # Read a frame
         ret, frame = cap.read()
         cap.release()
         
         if not ret:
-            raise HTTPException(status_code=404, detail="Failed to capture frame")
+            logger.error(f"Failed to read frame from RTSP stream: {rtsp_url}")
+            raise HTTPException(status_code=404, detail="Failed to capture frame - camera may be offline")
         
         frame = cv2.resize(frame, (1280, 720), interpolation=cv2.INTER_AREA)
         print("Resized frame shape:", frame.shape)
@@ -138,6 +148,8 @@ async def get_camera_frame(
         # Convert frame to JPEG with quality optimization
         _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         frame_bytes = buffer.tobytes()
+        
+        logger.info(f"Successfully captured and processed frame from: {rtsp_url}")
         
         # Return frame with proper headers for frontend polling
         return Response(
@@ -243,6 +255,11 @@ async def update_camera_route(
 
 @router.delete("/{camera_id}")
 def delete_camera_route(camera_id: int, db: Session = Depends(get_db)):
+    # Check if camera exists first
+    db_camera = get_camera(db, camera_id)
+    if db_camera is None:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
     delete_camera(db, camera_id)
     return {"detail": "Camera deleted"}
 
@@ -511,7 +528,7 @@ async def delete_fov_zone(
 # Define target size for frame resizing
 TARGET_SIZE = (1280, 720)
 
-@router.get("/camera/{camera_id}/test-mappings")
+@router.get("/{camera_id}/test-mappings")
 async def test_camera_mappings(
     camera_id: int,
     db: Session = Depends(get_db),

@@ -26,5 +26,10 @@ def update_customer_route(customer_id: int, customer: CustomerCreate, db: Sessio
 
 @router.delete("/{customer_id}")
 def delete_customer_route(customer_id: int, db: Session = Depends(get_db)):
+    # Check if customer exists first
+    db_customer = get_customer(db, customer_id)
+    if db_customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    
     delete_customer(db, customer_id)
     return {"detail": "Customer deleted"}
