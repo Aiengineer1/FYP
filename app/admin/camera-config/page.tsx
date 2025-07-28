@@ -3,7 +3,8 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { Camera, Plus, Edit, Trash2, Loader2 } from "lucide-react"
+import { Camera, Plus, Edit, Trash2, Loader2, ArrowLeft } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -54,6 +55,7 @@ interface CameraFormData {
 
 export default function CameraConfigPage() {
   const { toast } = useToast()
+  const router = useRouter()
   const [cameras, setCameras] = useState<CameraData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
@@ -321,7 +323,7 @@ export default function CameraConfigPage() {
         fov_zones: JSON.parse(formData.fov_zones),
       }
 
-      const response = await fetch("http://localhost:8000/add_camera", {
+      const response = await fetch("http://localhost:8000/camera/add_camera", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -375,7 +377,7 @@ export default function CameraConfigPage() {
         fov_zones: JSON.parse(formData.fov_zones),
       }
 
-      const response = await fetch(`http://localhost:8000/${selectedCamera.id}`, {
+      const response = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -429,7 +431,7 @@ export default function CameraConfigPage() {
         return
       }
 
-      const response = await fetch(`http://localhost:8000/${selectedCamera.id}`, {
+      const response = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${token}`
@@ -484,9 +486,20 @@ export default function CameraConfigPage() {
   return (
     <AuthenticatedLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Camera Configuration</h1>
-          <p className="text-muted-foreground">Manage your mall's camera system</p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Camera Configuration</h1>
+            <p className="text-muted-foreground">Manage your mall's camera system</p>
+          </div>
         </div>
 
         <Card>

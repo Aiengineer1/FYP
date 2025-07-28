@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
-import { Camera, CameraOff, Edit, Trash2, Play, Pause } from "lucide-react"
+import { useParams, useRouter } from "next/navigation"
+import { Camera, CameraOff, Edit, Trash2, Play, Pause, ArrowLeft } from "lucide-react"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -65,6 +65,7 @@ const getCameraDetails = (id: string) => {
 
 export default function CameraDetailsPage() {
   const params = useParams()
+  const router = useRouter()
   const [camera, setCamera] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -112,30 +113,19 @@ export default function CameraDetailsPage() {
   return (
     <AuthenticatedLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/admin/camera-config')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Camera Config
+          </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              {camera.status === "Active" ? (
-                <Camera className="h-6 w-6 text-green-500" />
-              ) : (
-                <CameraOff className="h-6 w-6 text-destructive" />
-              )}
-              {camera.name}
-            </h1>
-            <p className="text-muted-foreground">
-              {camera.location} • {camera.type} Camera
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
-              <Edit className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-            <Button variant="destructive" size="sm">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </Button>
+            <h1 className="text-3xl font-bold tracking-tight">Camera Details</h1>
+            <p className="text-muted-foreground">View and manage camera settings</p>
           </div>
         </div>
 

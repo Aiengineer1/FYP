@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ArrowLeft } from "lucide-react"
 
 export default function MallSetupPage() {
   const router = useRouter()
@@ -167,6 +168,19 @@ export default function MallSetupPage() {
 
   return (
     <div className="container mx-auto py-8">
+      {/* Back Button */}
+      <div className="mb-6">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push('/dashboard')}
+          className="flex items-center gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </Button>
+      </div>
+
       {/* Mall Map Preview */}
       {(mallMapImg || mallMap) && (
         <div className="mb-6 max-w-2xl mx-auto">

@@ -8,7 +8,7 @@ export default function Home() {
   return (
     <main className="min-h-screen">
       <Navbar />
-      
+
       {/* Hero Section */}
       <div className="flex flex-col md:flex-row min-h-[calc(100vh-64px)]">
         {/* Left side with transitioning text */}
@@ -18,16 +18,16 @@ export default function Home() {
               <Zap className="h-6 w-6 text-primary" />
               <span className="text-sm font-medium text-primary">AI-Powered Analytics</span>
             </div>
-            
+
             <h1 className="text-4xl md:text-6xl font-bold mb-4 text-gray-900">
               <TextTransition />
             </h1>
-            
+
             <p className="text-lg md:text-xl text-gray-600 mb-8 leading-relaxed">
-              Unlock the power of data to transform your retail business and drive growth. 
+              Unlock the power of data to transform your retail business and drive growth.
               Get real-time insights into customer behavior, inventory optimization, and sales forecasting.
             </p>
-            
+
             <div className="flex flex-col sm:flex-row gap-4 mb-8">
               <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-3">
                 Get Started
@@ -37,7 +37,7 @@ export default function Home() {
                 Watch Demo
               </Button>
             </div>
-            
+
             {/* Stats */}
             <div className="grid grid-cols-3 gap-6 pt-8 border-t border-gray-200">
               <div className="text-center">
@@ -73,7 +73,7 @@ export default function Home() {
               Everything you need to understand your customers, optimize operations, and boost sales
             </p>
           </div>
-          
+
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-6">
@@ -84,7 +84,7 @@ export default function Home() {
                 Get instant insights into customer behavior, traffic patterns, and sales performance with our advanced analytics dashboard.
               </p>
             </div>
-            
+
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center mb-6">
                 <Users className="h-6 w-6 text-secondary" />
@@ -94,7 +94,7 @@ export default function Home() {
                 Understand your customers better with demographic analysis, purchase patterns, and personalized recommendations.
               </p>
             </div>
-            
+
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center mb-6">
                 <TrendingUp className="h-6 w-6 text-accent" />
@@ -104,7 +104,7 @@ export default function Home() {
                 Predict future sales trends and optimize inventory with AI-powered forecasting algorithms.
               </p>
             </div>
-            
+
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-6">
                 <Shield className="h-6 w-6 text-primary" />
@@ -114,7 +114,7 @@ export default function Home() {
                 Enterprise-grade security with end-to-end encryption and GDPR compliance to protect your data.
               </p>
             </div>
-            
+
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center mb-6">
                 <Zap className="h-6 w-6 text-secondary" />
@@ -124,7 +124,7 @@ export default function Home() {
                 Seamlessly integrate with your existing POS systems and retail management software.
               </p>
             </div>
-            
+
             <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
               <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center mb-6">
                 <BarChart3 className="h-6 w-6 text-accent" />
@@ -172,7 +172,7 @@ export default function Home() {
                 Transforming retail with AI-powered analytics and customer insights.
               </p>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-gray-400">
@@ -182,7 +182,7 @@ export default function Home() {
                 <li><a href="#" className="hover:text-white">Documentation</a></li>
               </ul>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Company</h4>
               <ul className="space-y-2 text-gray-400">
@@ -192,7 +192,7 @@ export default function Home() {
                 <li><a href="#" className="hover:text-white">Contact</a></li>
               </ul>
             </div>
-            
+
             <div>
               <h4 className="font-semibold mb-4">Support</h4>
               <ul className="space-y-2 text-gray-400">
@@ -203,7 +203,7 @@ export default function Home() {
               </ul>
             </div>
           </div>
-          
+
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
             <p>&copy; 2024 InsightCart. All rights reserved.</p>
           </div>

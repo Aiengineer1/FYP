@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { Save, User, Lock, Camera, Trash2, AlertTriangle } from "lucide-react"
+import { Save, User, Lock, Camera, Trash2, AlertTriangle, ArrowLeft } from "lucide-react"
 
 import { apiClient } from "@/lib/api-client"
 import { useAuthStore } from "@/stores/auth-store"
@@ -596,9 +596,20 @@ export default function SettingsPage() {
     return (
         <AuthenticatedLayout>
             <div className="space-y-6">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-                    <p className="text-muted-foreground">Manage your account settings and preferences</p>
+                <div className="flex items-center gap-4">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push('/dashboard')}
+                        className="flex items-center gap-2"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Dashboard
+                    </Button>
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+                        <p className="text-muted-foreground">Manage your account settings and preferences</p>
+                    </div>
                 </div>
 
                 <Tabs defaultValue="account" className="space-y-6">

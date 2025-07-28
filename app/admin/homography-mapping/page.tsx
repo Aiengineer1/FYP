@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { Map, Plus, Save, Play, Square, Trash2, Loader2, RefreshCw, AlertCircle, Edit } from "lucide-react"
+import { Map, Plus, Save, Play, Square, Trash2, Loader2, RefreshCw, AlertCircle, Edit, ArrowLeft } from "lucide-react"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -103,6 +103,19 @@ export default function HomographyMappingPage() {
   const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
   const [scale, setScale] = useState(1);
   const mappingContainerRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to get the correct camera endpoint
+  const getCameraEndpoint = (cameraId: number) => {
+    const userData = localStorage.getItem("user");
+    if (!userData) {
+      throw new Error("User data not found");
+    }
+    const user = JSON.parse(userData);
+    if (!user.mall_id) {
+      throw new Error("No mall configured for user");
+    }
+    return `http://localhost:8000/mall/${user.mall_id}/cameras/${cameraId}`;
+  };
 
   // Add new states for flexible object mapping
   const [objectPointLimit, setObjectPointLimit] = useState(4); // default 4, user can increase
@@ -860,7 +873,7 @@ export default function HomographyMappingPage() {
       };
 
       // Save mappings
-      const mappingsResponse = await fetch("http://localhost:8000/homography/save-mappings", {
+      const mappingsResponse = await fetch("http://localhost:8000/camera/homography/save-mappings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -884,7 +897,7 @@ export default function HomographyMappingPage() {
           }
         };
 
-        const fovResponse = await fetch("http://localhost:8000/fov/update-zone", {
+        const fovResponse = await fetch("http://localhost:8000/camera/fov/update-zone", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1044,7 +1057,7 @@ export default function HomographyMappingPage() {
         return
       }
 
-      const response = await fetch("http://localhost:8000/homography/save-mappings", {
+      const response = await fetch("http://localhost:8000/camera/homography/save-mappings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1140,13 +1153,24 @@ export default function HomographyMappingPage() {
       if (!selectedCamera) return;
 
       try {
+        const userData = localStorage.getItem("user");
         const token = localStorage.getItem("token");
-        if (!token) {
+
+        if (!userData || !token) {
           throw new Error("No authentication token found");
         }
 
+        const user = JSON.parse(userData);
+
+        if (!user.mall_id) {
+          console.warn("No mall configured for user");
+          setZonesData([]);
+          return;
+        }
+
+        // Fetch camera data from the mall endpoint
         const response = await fetch(
-          `http://localhost:8000/${selectedCamera.id}`,
+          getCameraEndpoint(selectedCamera.id),
           {
             method: 'GET',
             headers: {
@@ -1157,7 +1181,10 @@ export default function HomographyMappingPage() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => null);
-          throw new Error(errorData?.detail || "Failed to fetch camera data");
+          console.warn("Failed to fetch camera data:", errorData);
+          // Don't throw error, just set empty zones
+          setZonesData([]);
+          return;
         }
 
         const data = await response.json();
@@ -1166,11 +1193,8 @@ export default function HomographyMappingPage() {
         setZonesData(zones);
       } catch (error) {
         console.error("Error fetching camera data:", error);
-        toast({
-          title: "Error",
-          description: error instanceof Error ? error.message : "Failed to fetch camera data",
-          variant: "destructive"
-        });
+        // Don't show error toast, just set empty zones
+        setZonesData([]);
       }
     };
 
@@ -1186,7 +1210,7 @@ export default function HomographyMappingPage() {
       if (!token) throw new Error("No authentication token found");
 
       const response = await fetch(
-        `http://localhost:8000/fov/delete-zone/${selectedCamera.id}/${zoneName}`,
+        `http://localhost:8000/camera/fov/delete-zone/${selectedCamera.id}/${zoneName}`,
         {
           method: "DELETE",
           headers: {
@@ -1200,8 +1224,14 @@ export default function HomographyMappingPage() {
       }
 
       // Refresh zones data
+      const userData = localStorage.getItem("user");
+      if (!userData) {
+        throw new Error("User data not found");
+      }
+      const user = JSON.parse(userData);
+
       const updatedResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        getCameraEndpoint(selectedCamera.id),
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -1235,7 +1265,7 @@ export default function HomographyMappingPage() {
 
       // Get current camera data
       const cameraResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        getCameraEndpoint(selectedCamera.id),
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -1263,7 +1293,7 @@ export default function HomographyMappingPage() {
 
       // Update camera with new zones
       const updateResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        getCameraEndpoint(selectedCamera.id),
         {
           method: "PUT",
           headers: {
@@ -1310,7 +1340,7 @@ export default function HomographyMappingPage() {
 
       // Get current camera data
       const cameraResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        `http://localhost:8000/camera/${selectedCamera.id}`,
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -1338,7 +1368,7 @@ export default function HomographyMappingPage() {
 
       // Update camera with new zones
       const updateResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        `http://localhost:8000/camera/${selectedCamera.id}`,
         {
           method: "PUT",
           headers: {
@@ -1385,7 +1415,7 @@ export default function HomographyMappingPage() {
 
       // Get current camera data
       const cameraResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        `http://localhost:8000/camera/${selectedCamera.id}`,
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -1422,7 +1452,7 @@ export default function HomographyMappingPage() {
 
       // Update camera with new zones
       const updateResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        `http://localhost:8000/camera/${selectedCamera.id}`,
         {
           method: "PUT",
           headers: {
@@ -1467,7 +1497,7 @@ export default function HomographyMappingPage() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No authentication token found");
       // Fetch current camera data
-      const cameraResponse = await fetch(`http://localhost:8000/${selectedCamera.id}`);
+      const cameraResponse = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`);
       const cameraData = await cameraResponse.json();
       const zones = cameraData.homography_map?.zones || [];
       // Update the zone name and all its objects' names
@@ -1486,7 +1516,7 @@ export default function HomographyMappingPage() {
       });
       // Update camera with new zones
       const updateResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        `http://localhost:8000/camera/${selectedCamera.id}`,
         {
           method: "PUT",
           headers: {
@@ -1517,7 +1547,7 @@ export default function HomographyMappingPage() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No authentication token found");
       // Fetch current camera data
-      const cameraResponse = await fetch(`http://localhost:8000/${selectedCamera.id}`);
+      const cameraResponse = await fetch(`http://localhost:8000/camera/${selectedCamera.id}`);
       const cameraData = await cameraResponse.json();
       const zones = cameraData.homography_map?.zones || [];
       // Update the object name
@@ -1534,7 +1564,7 @@ export default function HomographyMappingPage() {
       });
       // Update camera with new zones
       const updateResponse = await fetch(
-        `http://localhost:8000/${selectedCamera.id}`,
+        `http://localhost:8000/camera/${selectedCamera.id}`,
         {
           method: "PUT",
           headers: {
@@ -1740,9 +1770,20 @@ export default function HomographyMappingPage() {
   return (
     <AuthenticatedLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Homography Mapping</h1>
-          <p className="text-muted-foreground">Map camera views to your mall's top-view for accurate tracking</p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Homography Mapping</h1>
+            <p className="text-muted-foreground">Map camera views to your mall's top-view for accurate tracking</p>
+          </div>
         </div>
 
         <Card>

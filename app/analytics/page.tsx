@@ -168,9 +168,20 @@ function AnalyticsContent() {
         transition={{ duration: 0.5 }}
       >
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Analytical Dashboard</h1>
-            <p className="text-muted-foreground">Real-time insights and analytics for your mall</p>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push('/dashboard')}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Analytical Dashboard</h1>
+              <p className="text-muted-foreground">Real-time insights and analytics for your mall</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={isConnected ? "default" : "destructive"} className="flex items-center gap-1">
@@ -516,10 +527,9 @@ function AnalyticsContent() {
                       transition={{ delay: index * 0.1 }}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${
-                          alert.severity === 'warning' ? 'bg-accent' :
-                          alert.severity === 'error' ? 'bg-destructive' : 'bg-primary'
-                        }`} />
+                        <div className={`w-2 h-2 rounded-full ${alert.severity === 'warning' ? 'bg-accent' :
+                            alert.severity === 'error' ? 'bg-destructive' : 'bg-primary'
+                          }`} />
                         <div>
                           <div className="font-medium">{alert.message}</div>
                           <div className="text-sm text-muted-foreground flex items-center gap-1">

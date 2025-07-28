@@ -1,17 +1,33 @@
 "use client"
 
+import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
 import { IntegrationTest } from '@/components/integration-test'
 import AuthenticatedLayout from '@/components/authenticated-layout'
 
 export default function IntegrationTestPage() {
+    const router = useRouter()
+
     return (
         <AuthenticatedLayout>
             <div className="container mx-auto py-8">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold">Backend Integration Test</h1>
-                    <p className="text-muted-foreground mt-2">
-                        Test your frontend connection with the backend API and WebSocket endpoints
-                    </p>
+                <div className="flex items-center gap-4 mb-8">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push('/dashboard')}
+                        className="flex items-center gap-2"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        Back to Dashboard
+                    </Button>
+                    <div>
+                        <h1 className="text-3xl font-bold">Backend Integration Test</h1>
+                        <p className="text-muted-foreground mt-2">
+                            Test your frontend connection with the backend API and WebSocket endpoints
+                        </p>
+                    </div>
                 </div>
 
                 <IntegrationTest />
