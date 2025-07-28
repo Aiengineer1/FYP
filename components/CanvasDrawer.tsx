@@ -1,8 +1,32 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Download, ImageIcon, Trash2, HelpCircle, Edit2, XCircle, CornerUpLeft, CornerUpRight } from 'lucide-react';
 
-const CANVAS_WIDTH = 1280;
-const CANVAS_HEIGHT = 720;
+// Dynamic canvas size calculation
+const getCanvasSize = () => {
+  const screenWidth = window.innerWidth;
+  const screenHeight = window.innerHeight;
+
+  // Reserve space for sidebar (256px) and padding/margins (100px)
+  const availableWidth = screenWidth - 256 - 100;
+  const availableHeight = screenHeight - 200; // Reserve space for top bar and bottom button
+
+  // Maintain aspect ratio close to 16:9 but fit within available space
+  const maxWidth = Math.min(availableWidth, 1280);
+  const maxHeight = Math.min(availableHeight, 720);
+
+  // Calculate the best fit while maintaining aspect ratio
+  const aspectRatio = 16 / 9;
+  let canvasWidth = maxWidth;
+  let canvasHeight = maxWidth / aspectRatio;
+
+  if (canvasHeight > maxHeight) {
+    canvasHeight = maxHeight;
+    canvasWidth = maxHeight * aspectRatio;
+  }
+
+  return { width: Math.floor(canvasWidth), height: Math.floor(canvasHeight) };
+};
+
 const OBJECT_COLORS = [
   '#ff6666', '#66b3ff', '#99ff99', '#ffcc99', '#c299ff', '#ffd966', '#ff99c8', '#baffc9'
 ];
@@ -40,86 +64,99 @@ interface CanvasDrawerProps {
 
 export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHeight }: CanvasDrawerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasSize, setCanvasSize] = useState(getCanvasSize());
   const [objects, setObjects] = useState<MapObject[]>([]);
   const [colorIdx, setColorIdx] = useState(0);
   const [objectName, setObjectName] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [startPos, setStartPos] = useState<{x: number, y: number} | null>(null);
-  const [currentRect, setCurrentRect] = useState<{x1: number, y1: number, x2: number, y2: number} | null>(null);
+  const [startPos, setStartPos] = useState<{ x: number, y: number } | null>(null);
+  const [currentRect, setCurrentRect] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [renameIdx, setRenameIdx] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [history, setHistory] = useState<MapObject[][]>([]);
   const [future, setFuture] = useState<MapObject[][]>([]);
 
-  // Grid calculations - same as Python
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setCanvasSize(getCanvasSize());
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Grid calculations based on dynamic canvas size
   const cols = Math.max(1, Math.floor(plotWidth / tileWidth));
   const rows = Math.max(1, Math.floor(plotHeight / tileHeight));
-  const cellW = CANVAS_WIDTH / cols;
-  const cellH = CANVAS_HEIGHT / rows;
+  const cellW = canvasSize.width / cols;
+  const cellH = canvasSize.height / rows;
 
   // Initialize canvas
   useEffect(() => {
     drawCanvas();
-  }, [objects, cols, rows]);
+  }, [objects, cols, rows, canvasSize]);
 
   // Redraw canvas in real time while drawing
   useEffect(() => {
     drawCanvas();
-  }, [currentRect, isDrawing, objects, cols, rows]);
+  }, [currentRect, isDrawing, objects, cols, rows, canvasSize]);
 
   // Canvas drawing function - equivalent to Python's draw_grid + draw_cell_labels + set_object_cells
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     // Clear canvas
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
 
     // Draw grid lines (like Python's draw_grid)
     ctx.strokeStyle = '#cccccc';
     ctx.lineWidth = 1;
-    
+
     // Vertical lines
     for (let i = 0; i <= cols; i++) {
       const x = i * cellW;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, CANVAS_HEIGHT);
+      ctx.lineTo(x, canvasSize.height);
       ctx.stroke();
     }
-    
+
     // Horizontal lines
     for (let j = 0; j <= rows; j++) {
       const y = j * cellH;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(CANVAS_WIDTH, y);
+      ctx.lineTo(canvasSize.width, y);
       ctx.stroke();
     }
 
     // Draw cell labels (like Python's draw_cell_labels)
     ctx.fillStyle = '#888888';
-    ctx.font = '10px Arial';
+    // Responsive font size based on cell size
+    const fontSize = Math.max(8, Math.min(16, Math.min(cellW, cellH) * 0.3));
+    ctx.font = `${fontSize}px Arial`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const x = c * cellW + cellW / 2;
         const y = r * cellH + cellH / 2;
-        
+
         // Check if this cell is covered by any object
-        const isCovered = objects.some(obj => 
+        const isCovered = objects.some(obj =>
           r >= obj.grid_bounds.start_row && r <= obj.grid_bounds.end_row &&
           c >= obj.grid_bounds.start_col && c <= obj.grid_bounds.end_col
         );
-        
+
         if (!isCovered) {
           ctx.fillText(`${r + 1},${c + 1}`, x, y);
         }
@@ -129,7 +166,7 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
     // Draw objects (like Python's set_object_cells)
     objects.forEach((obj, idx) => {
       const { start_row, end_row, start_col, end_col } = obj.grid_bounds;
-      
+
       // Fill all covered cells
       ctx.fillStyle = obj.color;
       for (let r = start_row; r <= end_row; r++) {
@@ -139,17 +176,19 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
           ctx.fillRect(x, y, cellW, cellH);
         }
       }
-      
+
       // Draw object name in center (like Python)
       const centerX = ((start_col + end_col + 1) / 2) * cellW;
       const centerY = ((start_row + end_row + 1) / 2) * cellH;
-      
+
       ctx.fillStyle = 'black';
-      ctx.font = 'bold 14px Arial';
+      // Responsive font size for object names
+      const objectFontSize = Math.max(10, Math.min(20, Math.min(cellW, cellH) * 0.4));
+      ctx.font = `bold ${objectFontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(obj.name, centerX, centerY);
-      
+
       // Highlight selected object
       if (idx === selectedIdx) {
         ctx.strokeStyle = '#f59e42';
@@ -180,63 +219,87 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
+
+    // Calculate scale factor between display size and canvas size
+    const scaleX = canvasSize.width / rect.width;
+    const scaleY = canvasSize.height / rect.height;
+
+    const displayX = e.clientX - rect.left;
+    const displayY = e.clientY - rect.top;
+
+    // Convert to canvas coordinates
+    const x = displayX * scaleX;
+    const y = displayY * scaleY;
+
+    // Clamp to canvas bounds
+    const clampedX = Math.max(0, Math.min(x, canvasSize.width));
+    const clampedY = Math.max(0, Math.min(y, canvasSize.height));
+
     setIsDrawing(true);
-    setStartPos({ x, y });
-    setCurrentRect({ x1: x, y1: y, x2: x, y2: y });
-  }, []);
+    setStartPos({ x: clampedX, y: clampedY });
+    setCurrentRect({ x1: clampedX, y1: clampedY, x2: clampedX, y2: clampedY });
+  }, [canvasSize]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDrawing || !startPos) return;
-    
+
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
+
+    // Calculate scale factor between display size and canvas size
+    const scaleX = canvasSize.width / rect.width;
+    const scaleY = canvasSize.height / rect.height;
+
+    const displayX = e.clientX - rect.left;
+    const displayY = e.clientY - rect.top;
+
+    // Convert to canvas coordinates
+    const x = displayX * scaleX;
+    const y = displayY * scaleY;
+
+    // Clamp to canvas bounds
+    const clampedX = Math.max(0, Math.min(x, canvasSize.width));
+    const clampedY = Math.max(0, Math.min(y, canvasSize.height));
+
     setCurrentRect({
-      x1: Math.min(startPos.x, x),
-      y1: Math.min(startPos.y, y),
-      x2: Math.max(startPos.x, x),
-      y2: Math.max(startPos.y, y)
+      x1: Math.min(startPos.x, clampedX),
+      y1: Math.min(startPos.y, clampedY),
+      x2: Math.max(startPos.x, clampedX),
+      y2: Math.max(startPos.y, clampedY)
     });
-  }, [isDrawing, startPos]);
+  }, [isDrawing, startPos, canvasSize]);
 
   const handleMouseUp = useCallback(() => {
     if (!isDrawing || !currentRect || !startPos) return;
-    
+
     // Snap to grid (like Python)
     const col0 = Math.floor(currentRect.x1 / cellW);
     const col1 = Math.min(cols - 1, Math.floor(currentRect.x2 / cellW));
     const row0 = Math.floor(currentRect.y1 / cellH);
     const row1 = Math.min(rows - 1, Math.floor(currentRect.y2 / cellH));
-    
+
     // Reset drawing state
     setIsDrawing(false);
     setStartPos(null);
     setCurrentRect(null);
-    
+
     // Store pending rectangle data for name dialog
     const pendingObj = {
       row0, row1, col0, col1,
       color: OBJECT_COLORS[colorIdx % OBJECT_COLORS.length]
     };
-    
+
     // Store in a way that name dialog can access
     (window as any).pendingObject = pendingObj;
     setNameDialogOpen(true);
-    
+
   }, [isDrawing, currentRect, startPos, cellW, cellH, cols, rows, colorIdx]);
 
   // Handle name dialog - equivalent to Python's object creation
   const handleNameDialogClose = (save: boolean) => {
     if (save && objectName.trim() && (window as any).pendingObject) {
       const pending = (window as any).pendingObject;
-      
+
       // Create object exactly like Python
       const newObj: MapObject = {
         name: objectName.trim(),
@@ -261,15 +324,15 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
         area_sq_ft: (pending.row1 - pending.row0 + 1) * (pending.col1 - pending.col0 + 1) * tileWidth * tileHeight,
         color: pending.color
       };
-      
+
       // Add to history for undo
       setHistory(prev => [...prev.slice(-9), objects]);
       setFuture([]);
-      
+
       setObjects(prev => [...prev, newObj]);
       setColorIdx(prev => prev + 1);
     }
-    
+
     setObjectName("");
     setNameDialogOpen(false);
     delete (window as any).pendingObject;
@@ -323,13 +386,13 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
       plot_size_ft: [plotWidth, plotHeight],
       tile_size_ft: [tileWidth, tileHeight],
       tile_size_px: [cellW, cellH],
-      canvas_size_px: [CANVAS_WIDTH, CANVAS_HEIGHT],
+      canvas_size_px: [canvasSize.width, canvasSize.height],
       grid_rows: rows,
       grid_cols: cols,
       objects: objects,
       notes: 'All calculations and mapping are in feet and pixels. Pixel coordinates are for direct mapping to a camera frame of the same size as the canvas.'
     };
-    
+
     const blob = new Blob([JSON.stringify(data, null, 4)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -344,7 +407,7 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
   const handleExportPNG = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
+
     const dataURL = canvas.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = dataURL;
@@ -364,7 +427,7 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
   };
 
   return (
-    <div className="flex w-screen h-screen bg-gray-50">
+    <div className="flex w-screen h-screen bg-gray-50 overflow-hidden">
       {/* Sidebar: Object List */}
       <div className="w-64 bg-white border border-gray-200 rounded-xl shadow-md p-4 flex flex-col gap-2 max-h-full overflow-y-auto">
         <h3 className="text-lg font-semibold mb-2 text-blue-700">Objects</h3>
@@ -394,7 +457,8 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
           <div>{rows} rows × {cols} columns</div>
           <div>Cell: {cellW.toFixed(1)}px × {cellH.toFixed(1)}px</div>
           <div>Tile: {tileWidth}ft × {tileHeight}ft</div>
-          <div>Canvas: {CANVAS_WIDTH}×{CANVAS_HEIGHT}px</div>
+          <div>Canvas: {canvasSize.width}×{canvasSize.height}px</div>
+          <div className="mt-2 text-blue-600">Screen: {window.innerWidth}×{window.innerHeight}px</div>
         </div>
       </div>
 
@@ -421,13 +485,18 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
           </button>
         </div>
 
-        <div className="flex-1 flex justify-center items-center overflow-auto">
-          <div className="border rounded-xl overflow-hidden shadow-xl" style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT }}>
+        <div className="flex-1 flex justify-center items-center overflow-auto p-4">
+          <div className="border rounded-xl overflow-hidden shadow-xl bg-white">
             <canvas
               ref={canvasRef}
-              width={CANVAS_WIDTH}
-              height={CANVAS_HEIGHT}
-              className="block border border-gray-300 rounded cursor-crosshair"
+              width={canvasSize.width}
+              height={canvasSize.height}
+              className="block cursor-crosshair"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                display: 'block'
+              }}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
@@ -473,15 +542,15 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
               onKeyDown={e => e.key === 'Enter' && handleNameDialogClose(true)}
             />
             <div className="flex justify-end gap-2">
-              <button 
-                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300" 
+              <button
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
                 onClick={() => handleNameDialogClose(false)}
               >
                 Cancel
               </button>
-              <button 
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300" 
-                onClick={() => handleNameDialogClose(true)} 
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
+                onClick={() => handleNameDialogClose(true)}
                 disabled={!objectName.trim()}
               >
                 Save
@@ -504,15 +573,15 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
               onKeyDown={e => e.key === 'Enter' && handleRenameSave()}
             />
             <div className="flex justify-end gap-2">
-              <button 
-                className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300" 
+              <button
+                className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
                 onClick={() => { setRenameIdx(null); setRenameValue(''); }}
               >
                 Cancel
               </button>
-              <button 
-                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300" 
-                onClick={handleRenameSave} 
+              <button
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300"
+                onClick={handleRenameSave}
                 disabled={!renameValue.trim()}
               >
                 Save
@@ -533,12 +602,12 @@ export default function CanvasDrawer({ plotWidth, plotHeight, tileWidth, tileHei
               <p>• Click objects in sidebar to select/highlight</p>
               <p>• Use rename/delete buttons in sidebar</p>
               <p>• Export as JSON or PNG when done</p>
-              <p>• Canvas size: {CANVAS_WIDTH}×{CANVAS_HEIGHT}px</p>
+              <p>• Canvas size: {canvasSize.width}×{canvasSize.height}px</p>
               <p>• Grid: {rows} rows × {cols} columns</p>
             </div>
             <div className="flex justify-end mt-4">
-              <button 
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" 
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                 onClick={() => setShowHelp(false)}
               >
                 Got it!
