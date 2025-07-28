@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { BarChart, LineChart, Activity, Users, Camera, Filter, Wifi, WifiOff, Map, TrendingUp, AlertTriangle, Clock } from "lucide-react"
+import { BarChart, LineChart, Activity, Users, Camera, Filter, Wifi, WifiOff, Map, TrendingUp, AlertTriangle, Clock, ArrowLeft } from "lucide-react"
 import { motion } from "framer-motion"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
@@ -18,6 +18,7 @@ import { AnimatedBarChart, AnimatedStackedBarChart } from "@/components/charts/a
 import { useAuthStore } from "@/stores/auth-store"
 import { useAnalytics, useCameras, useRealTimeMetrics, useHeatmapData, useSectionAnalytics, useCustomerInsights, useAlerts, useTimeSeriesData, useCameraAnalytics } from "@/hooks/use-analytics"
 import { useSocket } from "@/lib/socket-client"
+import { useRouter } from "next/navigation"
 
 // Mock data for charts (fallback)
 const stayTimeData = [
@@ -41,6 +42,7 @@ const racks = [
 function AnalyticsContent() {
   const { user } = useAuthStore()
   const { socket, isConnected } = useSocket()
+  const router = useRouter()
 
   // Local state - declare first
   const [shelfInsightTab, setShelfInsightTab] = useState<string>("overall")
@@ -348,10 +350,10 @@ function AnalyticsContent() {
                 <CardDescription>Real-time visitor density across mall zones</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="relative w-full h-96 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-lg border-2 border-dashed border-gray-300">
+                <div className="relative w-full h-96 bg-gradient-to-br from-primary/5 to-secondary/5 rounded-lg border-2 border-dashed border-muted">
                   {/* Mall Layout Background */}
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-gray-400 text-sm">Mall Layout Map</div>
+                    <div className="text-muted-foreground text-sm">Mall Layout Map</div>
                   </div>
 
                   {/* Heatmap Points */}
@@ -362,8 +364,8 @@ function AnalyticsContent() {
                       style={{
                         left: `${zone.coordinates?.[0]?.[0] || 50}%`,
                         top: `${zone.coordinates?.[0]?.[1] || 50}%`,
-                        backgroundColor: `rgba(255, 0, 0, ${zone.density * 0.8})`,
-                        border: '2px solid rgba(255, 0, 0, 0.3)',
+                        backgroundColor: `hsl(var(--primary) / ${zone.density * 0.8})`,
+                        border: '2px solid hsl(var(--primary) / 0.3)',
                         transform: 'translate(-50%, -50%)',
                       }}
                       initial={{ scale: 0, opacity: 0 }}
@@ -371,7 +373,7 @@ function AnalyticsContent() {
                       transition={{ delay: index * 0.1 }}
                       title={`${zone.name}: ${zone.visitorCount} visitors`}
                     >
-                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+                      <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-foreground text-background text-xs px-2 py-1 rounded opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
                         {zone.name}: {zone.visitorCount}
                       </div>
                     </motion.div>
@@ -388,7 +390,7 @@ function AnalyticsContent() {
                           key={intensity}
                           className="w-4 h-4 rounded-full"
                           style={{
-                            backgroundColor: `rgba(255, 0, 0, ${intensity * 0.8})`,
+                            backgroundColor: `hsl(var(--primary) / ${intensity * 0.8})`,
                           }}
                         />
                       ))}
@@ -461,27 +463,27 @@ function AnalyticsContent() {
               <CardContent>
                 <div className="space-y-4">
                   {/* Time Series Chart Placeholder */}
-                  <div className="h-64 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+                  <div className="h-64 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border-2 border-dashed border-muted flex items-center justify-center">
                     <div className="text-center">
-                      <LineChart className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                      <div className="text-gray-500">Time Series Chart</div>
-                      <div className="text-sm text-gray-400">Visitor count over time</div>
+                      <LineChart className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
+                      <div className="text-muted-foreground">Time Series Chart</div>
+                      <div className="text-sm text-muted-foreground">Visitor count over time</div>
                     </div>
                   </div>
 
                   {/* Current Stats */}
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">{timeSeriesData[timeSeriesData.length - 1]?.visitors || 0}</div>
-                      <div className="text-sm text-blue-600">Current Visitors</div>
+                    <div className="text-center p-3 bg-primary/10 rounded-lg">
+                      <div className="text-2xl font-bold text-primary">{timeSeriesData[timeSeriesData.length - 1]?.visitors || 0}</div>
+                      <div className="text-sm text-primary">Current Visitors</div>
                     </div>
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">{timeSeriesData[timeSeriesData.length - 1]?.interactions || 0}</div>
-                      <div className="text-sm text-green-600">Interactions</div>
+                    <div className="text-center p-3 bg-secondary/10 rounded-lg">
+                      <div className="text-2xl font-bold text-secondary">{timeSeriesData[timeSeriesData.length - 1]?.interactions || 0}</div>
+                      <div className="text-sm text-secondary">Interactions</div>
                     </div>
-                    <div className="text-center p-3 bg-orange-50 rounded-lg">
-                      <div className="text-2xl font-bold text-orange-600">12:30</div>
-                      <div className="text-sm text-orange-600">Peak Time</div>
+                    <div className="text-center p-3 bg-accent/10 rounded-lg">
+                      <div className="text-2xl font-bold text-accent">12:30</div>
+                      <div className="text-sm text-accent">Peak Time</div>
                     </div>
                   </div>
                 </div>
@@ -514,9 +516,10 @@ function AnalyticsContent() {
                       transition={{ delay: index * 0.1 }}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${alert.severity === 'warning' ? 'bg-orange-500' :
-                          alert.severity === 'error' ? 'bg-red-500' : 'bg-blue-500'
-                          }`} />
+                        <div className={`w-2 h-2 rounded-full ${
+                          alert.severity === 'warning' ? 'bg-accent' :
+                          alert.severity === 'error' ? 'bg-destructive' : 'bg-primary'
+                        }`} />
                         <div>
                           <div className="font-medium">{alert.message}</div>
                           <div className="text-sm text-muted-foreground flex items-center gap-1">
@@ -525,7 +528,7 @@ function AnalyticsContent() {
                           </div>
                         </div>
                       </div>
-                      <Badge variant={alert.severity === 'warning' ? 'destructive' : 'secondary'}>
+                      <Badge variant={alert.severity === 'warning' ? 'secondary' : alert.severity === 'error' ? 'destructive' : 'default'}>
                         {alert.severity}
                       </Badge>
                     </motion.div>
@@ -554,11 +557,11 @@ function AnalyticsContent() {
                       <h4 className="font-medium mb-2">Gender Distribution</h4>
                       <div className="flex items-center gap-4">
                         <div className="text-center">
-                          <div className="text-2xl font-bold text-blue-600">{customerData?.male || 0}</div>
+                          <div className="text-2xl font-bold text-primary">{customerData?.male || 0}</div>
                           <div className="text-sm text-muted-foreground">Male</div>
                         </div>
                         <div className="text-center">
-                          <div className="text-2xl font-bold text-pink-600">{customerData?.female || 0}</div>
+                          <div className="text-2xl font-bold text-secondary">{customerData?.female || 0}</div>
                           <div className="text-sm text-muted-foreground">Female</div>
                         </div>
                       </div>

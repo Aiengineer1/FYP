@@ -177,7 +177,7 @@ export default function MallSetupPage() {
             <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto mb-2">{mallMap}</pre>
           )}
           <button
-            className="px-3 py-1 bg-red-500 text-white rounded"
+            className="px-3 py-1 bg-destructive text-destructive-foreground rounded hover:bg-destructive/90"
             onClick={() => {
               const userId = localStorage.getItem('user_id');
               const mapJsonKey = userId ? `mall_map_json_${userId}` : 'mall_map_json';
@@ -192,7 +192,7 @@ export default function MallSetupPage() {
           </button>
         </div>
       )}
-      <Card className="max-w-2xl mx-auto">
+      <Card className="max-w-2xl mx-auto border-l-4 border-l-primary">
         <CardHeader>
           <CardTitle>Mall Setup</CardTitle>
           <CardDescription>
@@ -210,6 +210,7 @@ export default function MallSetupPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="Enter mall name"
+                className="focus:ring-primary"
               />
             </div>
 
@@ -222,7 +223,7 @@ export default function MallSetupPage() {
                 onChange={handleInputChange}
                 required
                 placeholder="Enter mall address"
-                className="min-h-[100px]"
+                className="min-h-[100px] focus:ring-primary"
               />
             </div>
 
@@ -234,11 +235,11 @@ export default function MallSetupPage() {
                 accept="image/*"
                 onChange={handleImageChange}
                 required={!mallMapImg}
-                className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 focus:ring-primary"
                 disabled={!!mallMapImg}
               />
               {mallMapImg && (
-                <div className="text-xs text-gray-500 mt-1">You have drawn a mall map. Upload is disabled.</div>
+                <div className="text-xs text-muted-foreground mt-1">You have drawn a mall map. Upload is disabled.</div>
               )}
             </div>
 
@@ -247,7 +248,7 @@ export default function MallSetupPage() {
             </Button>
             <Button
               type="button"
-              className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+              className="w-full mt-4 bg-secondary hover:bg-secondary/90 text-secondary-foreground font-bold py-2 px-4 rounded"
               onClick={() => router.push('/mall-setup/draw')}
             >
               Don't have a mall map? Draw your mall layout

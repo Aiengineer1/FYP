@@ -80,10 +80,57 @@ export default function CameraConfigPage() {
     fov_zones?: string
   }>({})
 
+  // Default camera credentials state
+  const [defaultCredentials, setDefaultCredentials] = useState({
+    defaultUsername: "admin",
+    defaultPassword: "admin1234",
+  })
+
   // Fetch cameras when component mounts
   useEffect(() => {
     fetchCameras()
+    fetchDefaultCredentials()
   }, [])
+
+  // Fetch default camera credentials from settings
+  const fetchDefaultCredentials = async () => {
+    try {
+      const userData = localStorage.getItem("user")
+      if (!userData) {
+        console.log("No user data found, using default credentials")
+        return
+      }
+
+      const user = JSON.parse(userData)
+      const token = localStorage.getItem("token")
+
+      if (!token) {
+        console.log("No token found, using default credentials")
+        return
+      }
+
+      // Try to fetch default credentials from API
+      // For now, we'll use localStorage as a fallback since the API might not be implemented yet
+      const savedDefaults = localStorage.getItem("cameraDefaults")
+      if (savedDefaults) {
+        const defaults = JSON.parse(savedDefaults)
+        setDefaultCredentials(defaults)
+        console.log("Loaded default credentials from localStorage:", defaults)
+      }
+    } catch (error) {
+      console.error("Error fetching default credentials:", error)
+      // Keep using the default values
+    }
+  }
+
+  // Function to auto-fill form with default credentials
+  const autoFillWithDefaults = () => {
+    setFormData(prev => ({
+      ...prev,
+      username: defaultCredentials.defaultUsername,
+      password: defaultCredentials.defaultPassword,
+    }))
+  }
 
   // Fetch cameras from API
   const fetchCameras = async () => {
@@ -172,8 +219,8 @@ export default function CameraConfigPage() {
     setFormData({
       name: "",
       ip_address: "",
-      username: "",
-      password: "",
+      username: defaultCredentials.defaultUsername,
+      password: defaultCredentials.defaultPassword,
       location: "",
       homography_map: "{}",
       fov_zones: "{}",
@@ -449,116 +496,133 @@ export default function CameraConfigPage() {
                 <CardTitle>Cameras</CardTitle>
                 <CardDescription>View and manage all cameras in your mall</CardDescription>
               </div>
-              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+                setIsAddDialogOpen(open)
+                if (open) {
+                  resetForm() // This will auto-fill with default credentials
+                }
+              }}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="mr-2 h-4 w-4" />
                     Add Camera
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[600px]">
+                <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
                   <DialogHeader>
                     <DialogTitle>Add New Camera</DialogTitle>
                     <DialogDescription>Enter the details for the new camera</DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Camera Name</Label>
-                        <Input
-                          id="name"
-                          name="name"
-                          value={formData.name}
-                          onChange={handleInputChange}
-                          placeholder="Camera x"
-                          className={errors.name ? "border-destructive" : ""}
-                        />
-                        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+                  <div className="flex-1 overflow-y-auto pr-2">
+                    <div className="grid gap-4 py-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="name">Camera Name</Label>
+                          <Input
+                            id="name"
+                            name="name"
+                            value={formData.name}
+                            onChange={handleInputChange}
+                            placeholder="Camera x"
+                            className={errors.name ? "border-destructive" : ""}
+                          />
+                          {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="ip_address">IP Address</Label>
+                          <Input
+                            id="ip_address"
+                            name="ip_address"
+                            value={formData.ip_address}
+                            onChange={handleInputChange}
+                            placeholder="192.168.0.2"
+                            className={errors.ip_address ? "border-destructive" : ""}
+                          />
+                          {errors.ip_address && <p className="text-sm text-destructive">{errors.ip_address}</p>}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="username" className="flex items-center gap-2">
+                            Username
+                            {formData.username === defaultCredentials.defaultUsername && (
+                              <Badge variant="secondary" className="text-xs">Default</Badge>
+                            )}
+                          </Label>
+                          <Input
+                            id="username"
+                            name="username"
+                            value={formData.username}
+                            onChange={handleInputChange}
+                            placeholder="admin"
+                            className={errors.username ? "border-destructive" : ""}
+                          />
+                          {errors.username && <p className="text-sm text-destructive">{errors.username}</p>}
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="password" className="flex items-center gap-2">
+                            Password
+                            {formData.password === defaultCredentials.defaultPassword && (
+                              <Badge variant="secondary" className="text-xs">Default</Badge>
+                            )}
+                          </Label>
+                          <Input
+                            id="password"
+                            name="password"
+                            type="password"
+                            value={formData.password}
+                            onChange={handleInputChange}
+                            placeholder="••••••••"
+                            className={errors.password ? "border-destructive" : ""}
+                          />
+                          {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                        </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="ip_address">IP Address</Label>
+                        <Label htmlFor="location">Location</Label>
                         <Input
-                          id="ip_address"
-                          name="ip_address"
-                          value={formData.ip_address}
+                          id="location"
+                          name="location"
+                          value={formData.location}
                           onChange={handleInputChange}
-                          placeholder="192.168.0.2"
-                          className={errors.ip_address ? "border-destructive" : ""}
+                          placeholder="Enter camera location"
+                          className={errors.location ? "border-destructive" : ""}
                         />
-                        {errors.ip_address && <p className="text-sm text-destructive">{errors.ip_address}</p>}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="username">Username</Label>
-                        <Input
-                          id="username"
-                          name="username"
-                          value={formData.username}
-                          onChange={handleInputChange}
-                          placeholder="admin"
-                          className={errors.username ? "border-destructive" : ""}
-                        />
-                        {errors.username && <p className="text-sm text-destructive">{errors.username}</p>}
+                        {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="password">Password</Label>
-                        <Input
-                          id="password"
-                          name="password"
-                          type="password"
-                          value={formData.password}
+                        <Label htmlFor="homography_map">Homography Map (JSON)</Label>
+                        <Textarea
+                          id="homography_map"
+                          name="homography_map"
+                          value={formData.homography_map}
                           onChange={handleInputChange}
-                          placeholder="••••••••"
-                          className={errors.password ? "border-destructive" : ""}
+                          placeholder="{}"
+                          className={`font-mono text-sm h-32 resize-none ${errors.homography_map ? "border-destructive" : ""}`}
                         />
-                        {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                        {errors.homography_map && <p className="text-sm text-destructive">{errors.homography_map}</p>}
                       </div>
-                    </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="location">Location</Label>
-                      <Input
-                        id="location"
-                        name="location"
-                        value={formData.location}
-                        onChange={handleInputChange}
-                        placeholder="Enter camera location"
-                        className={errors.location ? "border-destructive" : ""}
-                      />
-                      {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="homography_map">Homography Map (JSON)</Label>
-                      <Textarea
-                        id="homography_map"
-                        name="homography_map"
-                        value={formData.homography_map}
-                        onChange={handleInputChange}
-                        placeholder="{}"
-                        className={`font-mono text-sm h-32 ${errors.homography_map ? "border-destructive" : ""}`}
-                      />
-                      {errors.homography_map && <p className="text-sm text-destructive">{errors.homography_map}</p>}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="fov_zones">FOV Zones (JSON)</Label>
-                      <Textarea
-                        id="fov_zones"
-                        name="fov_zones"
-                        value={formData.fov_zones}
-                        onChange={handleInputChange}
-                        placeholder='[{"id": 1, "name": "Zone A", "coordinates": [[10, 10], [100, 10], [100, 100], [10, 100]]}]'
-                        className={`font-mono text-sm h-32 ${errors.fov_zones ? "border-destructive" : ""}`}
-                      />
-                      {errors.fov_zones && <p className="text-sm text-destructive">{errors.fov_zones}</p>}
+                      <div className="space-y-2">
+                        <Label htmlFor="fov_zones">FOV Zones (JSON)</Label>
+                        <Textarea
+                          id="fov_zones"
+                          name="fov_zones"
+                          value={formData.fov_zones}
+                          onChange={handleInputChange}
+                          placeholder='[{"id": 1, "name": "Zone A", "coordinates": [[10, 10], [100, 10], [100, 100], [10, 100]]}]'
+                          className={`font-mono text-sm h-32 resize-none ${errors.fov_zones ? "border-destructive" : ""}`}
+                        />
+                        {errors.fov_zones && <p className="text-sm text-destructive">{errors.fov_zones}</p>}
+                      </div>
                     </div>
                   </div>
-                  <DialogFooter>
+                  <DialogFooter className="flex-shrink-0">
                     <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                       Cancel
                     </Button>
@@ -598,7 +662,7 @@ export default function CameraConfigPage() {
                         <TableCell>{camera.ip_address}</TableCell>
                         <TableCell>{camera.location}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
                             Active
                           </Badge>
                         </TableCell>
@@ -615,103 +679,105 @@ export default function CameraConfigPage() {
                                   <span className="sr-only">Edit</span>
                                 </Button>
                               </DialogTrigger>
-                              <DialogContent className="sm:max-w-[600px]">
+                              <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col">
                                 <DialogHeader>
                                   <DialogTitle>Edit Camera</DialogTitle>
                                   <DialogDescription>Update the camera details</DialogDescription>
                                 </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                      <Label htmlFor="edit-name">Camera Name</Label>
-                                      <Input
-                                        id="edit-name"
-                                        name="name"
-                                        value={formData.name}
-                                        onChange={handleInputChange}
-                                        className={errors.name ? "border-destructive" : ""}
-                                      />
-                                      {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+                                <div className="flex-1 overflow-y-auto pr-2">
+                                  <div className="grid gap-4 py-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-name">Camera Name</Label>
+                                        <Input
+                                          id="edit-name"
+                                          name="name"
+                                          value={formData.name}
+                                          onChange={handleInputChange}
+                                          className={errors.name ? "border-destructive" : ""}
+                                        />
+                                        {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+                                      </div>
+
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-ip_address">IP Address</Label>
+                                        <Input
+                                          id="edit-ip_address"
+                                          name="ip_address"
+                                          value={formData.ip_address}
+                                          onChange={handleInputChange}
+                                          className={errors.ip_address ? "border-destructive" : ""}
+                                        />
+                                        {errors.ip_address && <p className="text-sm text-destructive">{errors.ip_address}</p>}
+                                      </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-username">Username</Label>
+                                        <Input
+                                          id="edit-username"
+                                          name="username"
+                                          value={formData.username}
+                                          onChange={handleInputChange}
+                                          className={errors.username ? "border-destructive" : ""}
+                                        />
+                                        {errors.username && <p className="text-sm text-destructive">{errors.username}</p>}
+                                      </div>
+
+                                      <div className="space-y-2">
+                                        <Label htmlFor="edit-password">Password</Label>
+                                        <Input
+                                          id="edit-password"
+                                          name="password"
+                                          type="password"
+                                          value={formData.password}
+                                          onChange={handleInputChange}
+                                          className={errors.password ? "border-destructive" : ""}
+                                        />
+                                        {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                                      </div>
                                     </div>
 
                                     <div className="space-y-2">
-                                      <Label htmlFor="edit-ip_address">IP Address</Label>
+                                      <Label htmlFor="edit-location">Location</Label>
                                       <Input
-                                        id="edit-ip_address"
-                                        name="ip_address"
-                                        value={formData.ip_address}
+                                        id="edit-location"
+                                        name="location"
+                                        value={formData.location}
                                         onChange={handleInputChange}
-                                        className={errors.ip_address ? "border-destructive" : ""}
+                                        placeholder="Enter camera location"
+                                        className={errors.location ? "border-destructive" : ""}
                                       />
-                                      {errors.ip_address && <p className="text-sm text-destructive">{errors.ip_address}</p>}
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                      <Label htmlFor="edit-username">Username</Label>
-                                      <Input
-                                        id="edit-username"
-                                        name="username"
-                                        value={formData.username}
-                                        onChange={handleInputChange}
-                                        className={errors.username ? "border-destructive" : ""}
-                                      />
-                                      {errors.username && <p className="text-sm text-destructive">{errors.username}</p>}
+                                      {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
                                     </div>
 
                                     <div className="space-y-2">
-                                      <Label htmlFor="edit-password">Password</Label>
-                                      <Input
-                                        id="edit-password"
-                                        name="password"
-                                        type="password"
-                                        value={formData.password}
+                                      <Label htmlFor="edit-homography_map">Homography Map (JSON)</Label>
+                                      <Textarea
+                                        id="edit-homography_map"
+                                        name="homography_map"
+                                        value={formData.homography_map}
                                         onChange={handleInputChange}
-                                        className={errors.password ? "border-destructive" : ""}
+                                        className={`font-mono text-sm h-32 resize-none ${errors.homography_map ? "border-destructive" : ""}`}
                                       />
-                                      {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                                      {errors.homography_map && <p className="text-sm text-destructive">{errors.homography_map}</p>}
                                     </div>
-                                  </div>
 
-                                  <div className="space-y-2">
-                                    <Label htmlFor="edit-location">Location</Label>
-                                    <Input
-                                      id="edit-location"
-                                      name="location"
-                                      value={formData.location}
-                                      onChange={handleInputChange}
-                                      placeholder="Enter camera location"
-                                      className={errors.location ? "border-destructive" : ""}
-                                    />
-                                    {errors.location && <p className="text-sm text-destructive">{errors.location}</p>}
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor="edit-homography_map">Homography Map (JSON)</Label>
-                                    <Textarea
-                                      id="edit-homography_map"
-                                      name="homography_map"
-                                      value={formData.homography_map}
-                                      onChange={handleInputChange}
-                                      className={`font-mono text-sm h-32 ${errors.homography_map ? "border-destructive" : ""}`}
-                                    />
-                                    {errors.homography_map && <p className="text-sm text-destructive">{errors.homography_map}</p>}
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor="edit-fov_zones">FOV Zones (JSON)</Label>
-                                    <Textarea
-                                      id="edit-fov_zones"
-                                      name="fov_zones"
-                                      value={formData.fov_zones}
-                                      onChange={handleInputChange}
-                                      className={`font-mono text-sm h-32 ${errors.fov_zones ? "border-destructive" : ""}`}
-                                    />
-                                    {errors.fov_zones && <p className="text-sm text-destructive">{errors.fov_zones}</p>}
+                                    <div className="space-y-2">
+                                      <Label htmlFor="edit-fov_zones">FOV Zones (JSON)</Label>
+                                      <Textarea
+                                        id="edit-fov_zones"
+                                        name="fov_zones"
+                                        value={formData.fov_zones}
+                                        onChange={handleInputChange}
+                                        className={`font-mono text-sm h-32 resize-none ${errors.fov_zones ? "border-destructive" : ""}`}
+                                      />
+                                      {errors.fov_zones && <p className="text-sm text-destructive">{errors.fov_zones}</p>}
+                                    </div>
                                   </div>
                                 </div>
-                                <DialogFooter>
+                                <DialogFooter className="flex-shrink-0">
                                   <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                                     Cancel
                                   </Button>

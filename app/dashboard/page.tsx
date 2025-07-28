@@ -242,7 +242,7 @@ export default function DashboardPage() {
           <p className="text-muted-foreground">Overview of your mall and camera system</p>
         </div>
 
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardHeader className="pb-3">
             <CardTitle>Mall Information</CardTitle>
             <CardDescription>Basic details about your mall</CardDescription>
@@ -280,31 +280,31 @@ export default function DashboardPage() {
         ) : (
           <div className="grid gap-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card>
+              <Card className="border-l-4 border-l-primary">
                 <CardHeader className="pb-2">
                   <CardTitle>Total Cameras</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center">
-                    <Camera className="h-8 w-8 text-muted-foreground mr-3" />
+                    <Camera className="h-8 w-8 text-primary mr-3" />
                     <span className="text-3xl font-bold">{totalCameras}</span>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-l-4 border-l-accent">
                 <CardHeader className="pb-2">
                   <CardTitle>Active Cameras</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center">
-                    <Camera className="h-8 w-8 text-green-500 mr-3" />
+                    <Camera className="h-8 w-8 text-accent mr-3" />
                     <span className="text-3xl font-bold">{activeCameras.length}</span>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-l-4 border-l-destructive">
                 <CardHeader className="pb-2">
                   <CardTitle>Inactive Cameras</CardTitle>
                 </CardHeader>
@@ -333,13 +333,13 @@ export default function DashboardPage() {
                           className="flex items-center justify-between p-3 rounded-md border hover:bg-muted transition-colors"
                         >
                           <div className="flex items-center gap-3">
-                            <Camera className="h-5 w-5 text-green-500" />
+                            <Camera className="h-5 w-5 text-accent" />
                             <div>
                               <p className="font-medium">{camera.name}</p>
                               <p className="text-sm text-muted-foreground">{camera.location}</p>
                             </div>
                           </div>
-                          <Badge variant="outline" className="bg-green-50 text-green-700 hover:bg-green-100">
+                          <Badge variant="outline" className="bg-accent/10 text-accent hover:bg-accent/20 border-accent/20">
                             Active
                           </Badge>
                           <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -373,7 +373,7 @@ export default function DashboardPage() {
                               <p className="text-sm text-muted-foreground">{camera.location}</p>
                             </div>
                           </div>
-                          <Badge variant="outline" className="bg-red-50 text-red-700 hover:bg-red-100">
+                          <Badge variant="outline" className="bg-destructive/10 text-destructive hover:bg-destructive/20 border-destructive/20">
                             Inactive
                           </Badge>
                           <ArrowRight className="h-4 w-4 text-muted-foreground" />

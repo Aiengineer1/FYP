@@ -160,6 +160,20 @@ export default function SettingsPage() {
         defaultPassword: "camera123",
     })
 
+    // Load saved camera defaults on component mount
+    useEffect(() => {
+        const savedDefaults = localStorage.getItem("cameraDefaults")
+        if (savedDefaults) {
+            try {
+                const defaults = JSON.parse(savedDefaults)
+                setCameraDefaults(defaults)
+                console.log("Loaded saved camera defaults:", defaults)
+            } catch (error) {
+                console.error("Error parsing saved camera defaults:", error)
+            }
+        }
+    }, [])
+
     // Form errors state
     const [accountErrors, setAccountErrors] = useState<{
         name?: string
@@ -475,7 +489,9 @@ export default function SettingsPage() {
             // Simulate API call
             await new Promise((resolve) => setTimeout(resolve, 1000))
 
+            // Save camera defaults to localStorage for now
             // In a real app, you would save camera defaults to an API
+            localStorage.setItem("cameraDefaults", JSON.stringify(cameraDefaults))
             console.log("Camera defaults saved:", cameraDefaults)
 
             toast({

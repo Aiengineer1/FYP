@@ -2050,7 +2050,7 @@ export default function HomographyMappingPage() {
                       style={{
                         width: '100vw',
                         aspectRatio: '32/9',
-                        background: '#f3f3f3',
+                        background: 'hsl(var(--muted))',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -2065,7 +2065,7 @@ export default function HomographyMappingPage() {
                           style={{
                             width: '50%',
                             height: '100%',
-                            background: '#f3f3f3',
+                            background: 'hsl(var(--muted))',
                             position: 'relative',
                             borderRadius: '8px',
                             overflow: 'hidden',
@@ -2106,7 +2106,7 @@ export default function HomographyMappingPage() {
                                       top: `${point.y}px`,
                                     }}
                                   >
-                                    <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                                    <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
                                       {index + 1}
                                     </div>
                                   </div>
@@ -2122,7 +2122,7 @@ export default function HomographyMappingPage() {
                                       top: `${point.y}px`,
                                     }}
                                   >
-                                    <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                                    <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
                                       {index + 1}
                                     </div>
                                   </div>
@@ -2197,7 +2197,7 @@ export default function HomographyMappingPage() {
                             style={{
                               width: "100%",
                               height: "100%",
-                              background: "#f3f3f3",
+                              background: "hsl(var(--muted))",
                               position: "relative",
                               borderRadius: "8px",
                               overflow: "hidden",
@@ -2239,7 +2239,7 @@ export default function HomographyMappingPage() {
                                         top: `${point.y}px`,
                                       }}
                                     >
-                                      <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                                      <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
                                         {index + 1}
                                       </div>
                                     </div>
@@ -2255,7 +2255,7 @@ export default function HomographyMappingPage() {
                                         top: `${point.y}px`,
                                       }}
                                     >
-                                      <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-white text-xs font-bold">
+                                      <div className="w-full h-full rounded-full border-2 border-white bg-primary flex items-center justify-center text-primary-foreground text-xs font-bold">
                                         {index + 1}
                                       </div>
                                     </div>
